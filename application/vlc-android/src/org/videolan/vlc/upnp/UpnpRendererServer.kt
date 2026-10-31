@@ -102,6 +102,7 @@ object UpnpRendererServer {
             val requestLine = reader.readLine() ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
+            val method = parts[0]
             val path = parts[1]
 
             val headers = mutableMapOf<String, String>()
@@ -130,6 +131,25 @@ object UpnpRendererServer {
             }
 
             when {
+                method == "SUBSCRIBE" -> {
+                    val subId = "uuid:${java.util.UUID.randomUUID()}"
+                    val respHeader = "HTTP/1.1 200 OK\r\n" +
+                            "Server: Linux/1.0 UPnP/1.0 VLC-Android-TV/1.0\r\n" +
+                            "SID: $subId\r\n" +
+                            "TIMEOUT: Second-1800\r\n" +
+                            "Content-Length: 0\r\n" +
+                            "Connection: close\r\n\r\n"
+                    out.write(respHeader.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                method == "UNSUBSCRIBE" -> {
+                    val respHeader = "HTTP/1.1 200 OK\r\n" +
+                            "Server: Linux/1.0 UPnP/1.0 VLC-Android-TV/1.0\r\n" +
+                            "Content-Length: 0\r\n" +
+                            "Connection: close\r\n\r\n"
+                    out.write(respHeader.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
                 path == "/description.xml" || path == "/device.xml" -> {
                     val ip = getLocalIpAddress() ?: "127.0.0.1"
                     val xml = getDeviceXml(ip)
@@ -191,9 +211,22 @@ object UpnpRendererServer {
                 val end = body.indexOf("</CurrentURI>")
                 if (start != -1 && end != -1) {
                     val rawUri = body.substring(start + "<CurrentURI>".length, end)
-                    val uri = rawUri.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                    val uri = rawUri.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").trim()
                     currentUri = uri
                     Log.i(TAG, "UPnP SetAVTransportURI: $uri")
+                    if (uri.isNotEmpty()) {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            try {
+                                PlaybackService.start(context)
+                                val mw = org.videolan.medialibrary.MLServiceLocator.getAbstractMediaWrapper(android.net.Uri.parse(uri))
+                                val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
+                                service.load(mw)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error pre-loading URI in PlaybackService: ${e.message}")
+                                MediaUtils.openMediaNoUi(context, android.net.Uri.parse(uri))
+                            }
+                        }
+                    }
                 }
                 soapEnvelope("<u:SetAVTransportURIResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
             }
