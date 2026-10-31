@@ -1,0 +1,68 @@
+name: Build VLC Android TV
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Custom VLC TV APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download Gradle & Generate Wrapper
+        run: |
+          GRADLE_VERSION=8.13
+          curl -sLO https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
+          python3 -c "import zipfile; zipfile.ZipFile('gradle-${GRADLE_VERSION}-bin.zip').extractall('.')"
+          ./gradle-${GRADLE_VERSION}/bin/gradle wrapper
+          chmod +x gradlew
+          rm -rf gradle-${GRADLE_VERSION}-bin.zip
+
+      - name: Setup local.properties and debug keystore
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          mkdir -p ~/.android
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+
+      - name: Build Application APK
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VLC-Custom-TV-Debug
+          path: application/app/build/outputs/apk/**/*.apk
+
+      - name: Release APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/')
+        with:
+          tag_name: vlc-tv-custom-v1.0
+          name: "VLC for Android TV (Customized Home Sections)"
+          body: |
+            ### VLC for Android TV с кастомными разделами
+            
+            **Что изменено:**
+            - В Настройки -> Интерфейс добавлен раздел: **«Разделы главного экрана»**.
+            - Появилась возможность отключать любые строки (Видео, Аудио, Обзор, История, Недавно проигранное, Новинки).
+            - Появился выбор порядка строк: можно поставить **Обзор (UPnP / DLNA / Сеть)** первым сверху!
+          files: application/app/build/outputs/apk/**/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
