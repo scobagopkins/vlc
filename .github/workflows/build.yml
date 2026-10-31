@@ -31,6 +31,7 @@ jobs:
           GRADLE_VERSION=8.13
           curl -sLO https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
           python3 -c "import zipfile; zipfile.ZipFile('gradle-${GRADLE_VERSION}-bin.zip').extractall('.')"
+          chmod +x ./gradle-${GRADLE_VERSION}/bin/gradle
           ./gradle-${GRADLE_VERSION}/bin/gradle wrapper
           chmod +x gradlew
           rm -rf gradle-${GRADLE_VERSION}-bin.zip
