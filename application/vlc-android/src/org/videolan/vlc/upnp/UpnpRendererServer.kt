@@ -1,6 +1,7 @@
 package org.videolan.vlc.upnp
 
 import android.content.Context
+import android.content.Intent
 import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.*
@@ -231,15 +232,25 @@ object UpnpRendererServer {
                     currentUri = uri
                     Log.i(TAG, "UPnP SetAVTransportURI: $uri")
                     if (uri.isNotEmpty()) {
+                        log("ACTION: Triggering playback for $uri")
                         CoroutineScope(Dispatchers.Main).launch {
                             try {
                                 PlaybackService.start(context)
-                                val mw = org.videolan.medialibrary.MLServiceLocator.getAbstractMediaWrapper(android.net.Uri.parse(uri))
                                 val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
-                                service.load(mw)
+                                service.loadLocation(uri)
+                                log("ACTION: Successfully loaded location into PlaybackService")
+                                
+                                // Open TV Audio Player UI
+                                try {
+                                    val intent = Intent().setClassName(context, "org.videolan.television.ui.audioplayer.AudioPlayerActivity").apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    log("ACTION: AudioPlayerActivity start notice: ${e.message}")
+                                }
                             } catch (e: Exception) {
-                                Log.e(TAG, "Error pre-loading URI in PlaybackService: ${e.message}")
-                                MediaUtils.openMediaNoUi(context, android.net.Uri.parse(uri))
+                                log("ACTION ERROR: ${e.message}")
                             }
                         }
                     }
@@ -248,16 +259,16 @@ object UpnpRendererServer {
             }
             soapAction.contains("Play") -> {
                 Log.i(TAG, "UPnP Play requested for URI: $currentUri")
+                log("ACTION: UPnP Play requested")
                 currentUri?.let { uri ->
                     CoroutineScope(Dispatchers.Main).launch {
                         try {
                             PlaybackService.start(context)
-                            val mw = org.videolan.medialibrary.MLServiceLocator.getAbstractMediaWrapper(android.net.Uri.parse(uri))
                             val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
-                            service.load(mw)
+                            service.loadLocation(uri)
+                            log("ACTION: Play command triggered loadLocation")
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error playing URI in PlaybackService: ${e.message}")
-                            MediaUtils.openMediaNoUi(context, android.net.Uri.parse(uri))
+                            log("ACTION ERROR Play: ${e.message}")
                         }
                     }
                 }

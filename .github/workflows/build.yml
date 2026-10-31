@@ -56,15 +56,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v2.6
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.6 with /debug logs)"
+          tag_name: vlc-tv-custom-v2.7
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.7 with AudioPlayerActivity launch)"
           body: |
-            ### VLC for Android TV с онлайн-диагностикой /debug v2.6
+            ### VLC for Android TV с прямым запуском AudioPlayerActivity v2.7
             
-            **Что добавлено в v2.6:**
-            - **Встроен веб-логгер реального времени**: открыв в браузере телефона `http://192.168.1.98:8188/debug`, можно вживую увидеть ВСЕ запросы и ошибки между BubbleUPnP и VLC.
-            - Поддержка GENA SUBSCRIBE / UNSUBSCRIBE.
-            - Автозапуск и прямая передача аудио в PlaybackService.
+            **Что исправлено в v2.7:**
+            - **Прямой метод `service.loadLocation(uri)`**: воспроизводит чистый сетевой URL без посредничества MediaLibrary SQLite.
+            - **Принудительное открытие экрана плеера на телевизоре**: при получении трека из BubbleUPnP на ТВ открывается нативная активность плеера `AudioPlayerActivity` (обложка, название, таймлайн).
+            - **Расширенный лог `/debug`**: выводит статус каждого шага вызова плеера.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
