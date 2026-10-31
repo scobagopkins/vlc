@@ -56,15 +56,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v1.0
-          name: "VLC for Android TV (Customized Home Sections)"
+          tag_name: vlc-tv-custom-v2.0
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.0)"
           body: |
-            ### VLC for Android TV с кастомными разделами
+            ### VLC for Android TV с UPnP MediaRenderer и кастомными разделами
             
-            **Что изменено:**
-            - В Настройки -> Интерфейс добавлен раздел: **«Разделы главного экрана»**.
-            - Появилась возможность отключать любые строки (Видео, Аудио, Обзор, История, Недавно проигранное, Новинки).
-            - Появился выбор порядка строк: можно поставить **Обзор (UPnP / DLNA / Сеть)** первым сверху!
+            **Что нового в v2.0:**
+            - **Встроен UPnP / DLNA MediaRenderer**: телевизор объявляет себя в сети (SSDP) и принимает потоки прямо из **BubbleUPnP** (SetAVTransportURI, Play, Pause, Stop, Seek, GetPositionInfo).
+            - **Восстановлено «Избранное»**: теперь пункт включен по умолчанию и им можно управлять из настроек.
+            - **Сгенерированы компактные APK**: отдельный легкий билд `armeabi-v7a` (~35 МБ) для телевизоров и универсальный `all.apk`.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

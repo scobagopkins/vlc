@@ -351,7 +351,7 @@ class MainTvFragment : BrowseSupportFragment(), OnItemViewSelectedListener, OnIt
         val showRecentlyAdded = sharedPrefs.getBoolean("tv_show_recently_added", true)
         val showHistoryPref = sharedPrefs.getBoolean("tv_show_history", false)
         val showPlaylistsPref = sharedPrefs.getBoolean("tv_show_playlists", false)
-        val showFavoritesPref = sharedPrefs.getBoolean("tv_show_favorites", false)
+        val showFavoritesPref = sharedPrefs.getBoolean("tv_show_favorites", true)
         val order = sharedPrefs.getString("tv_sections_order", "default")
 
         val rawList = when (order) {

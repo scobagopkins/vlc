@@ -102,6 +102,9 @@ class AppSetupDelegate : AppDelegate,
         backgroundInit()
         if (settings.getBoolean(KEY_ENABLE_REMOTE_ACCESS, false))
             startRemoteAccess()
+        try {
+            org.videolan.vlc.upnp.UpnpRendererServer.start(this)
+        } catch (_: Exception) {}
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {

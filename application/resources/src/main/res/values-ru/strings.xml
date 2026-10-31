@@ -997,5 +997,6 @@
     <string name="tv_show_recently_played_summary">Отображать строку недавно проигранного</string>
     <string name="tv_show_recently_added_summary">Отображать строку новинок медиатеки</string>
     <string name="tv_show_history_summary">Отображать строку истории</string>
-    <string name="tv_show_playlists_summary">Отображать строку плейлистов</string>
+    <string name="tv_show_playlists_summary">Отображать строку сохраненных плейлистов</string>
+    <string name="tv_show_favorites_summary">Отображать строку избранного</string>
 </resources>

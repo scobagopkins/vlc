@@ -16,6 +16,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" /> <!-- Internet -->
     <uses-permission android:name="android.permission.INTERNET"/> <!-- Launch recommendations service once device is booted -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/> <!-- Audio search on TV -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/> <!-- USe foreground services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/> <!-- normal -->

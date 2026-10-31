@@ -122,20 +122,10 @@ android {
 
     splits {
         abi {
-            def isReleaseBuild = false
-            gradle.startParameter.taskNames.find {
-                // Enable split for release builds in different build flavors
-                // (assemblePaidRelease, assembleFreeRelease, etc.).
-                if (it.toLowerCase() ==~ /assemble.*Release/.toLowerCase()) {
-                    isReleaseBuild = true
-                    return true // break
-                }
-                return false // continue
-            }
-            enable isReleaseBuild
+            enable true
             reset()
             include "x86", "x86_64", "armeabi-v7a", "arm64-v8a"
-//            universalApk !isReleaseBuild
+            universalApk true
         }
     }
 

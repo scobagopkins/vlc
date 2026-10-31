@@ -196,5 +196,11 @@
                 android:defaultValue="false"
                 android:summary="@string/tv_show_playlists_summary"
                 android:title="@string/playlists"/>
+        <CheckBoxPreference
+                app:singleLineTitle="false"
+                android:key="tv_show_favorites"
+                android:defaultValue="true"
+                android:summary="@string/tv_show_favorites_summary"
+                android:title="@string/favorites"/>
     </PreferenceCategory>
 </androidx.preference.PreferenceScreen>

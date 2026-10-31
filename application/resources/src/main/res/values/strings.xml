@@ -1424,5 +1424,6 @@
     <string name="tv_show_recently_played_summary">Show recently played row</string>
     <string name="tv_show_recently_added_summary">Show recently added row</string>
     <string name="tv_show_history_summary">Show playback history row</string>
-    <string name="tv_show_playlists_summary">Show playlists row</string>
+    <string name="tv_show_playlists_summary">Show saved playlists row</string>
+    <string name="tv_show_favorites_summary">Show favorites row</string>
 </resources>
