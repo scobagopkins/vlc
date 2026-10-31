@@ -13,7 +13,7 @@ object UpnpRendererServer {
     private const val TAG = "VLC/UpnpRenderer"
     private const val SSDP_PORT = 1900
     private const val SSDP_MULTICAST = "239.255.255.250"
-    private const val HTTP_PORT = 8088
+    private const val HTTP_PORT = 8188
 
     private var isRunning = false
     private var scope: CoroutineScope? = null

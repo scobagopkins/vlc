@@ -56,14 +56,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v2.2
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.2)"
+          tag_name: vlc-tv-custom-v2.3
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.3)"
           body: |
-            ### VLC for Android TV с полным DLNA MediaRenderer v2.2
+            ### VLC for Android TV с изолированным UPnP MediaRenderer v2.3
             
-            **Что исправлено в v2.2:**
-            - **Добавлен обязательный сервис `RenderingControl:1`**: без него BubbleUPnP отбрасывал устройство при верификации UPnP стека (GetVolume, SetVolume, GetMute, SetMute).
-            - **Порт 8088 подтвержден открытым**: веб-демон успешно слушает входящие запросы.
+            **Что исправлено в v2.3:**
+            - **Перенос на порт 8188**: исключен конфликт с заводским OEM-сервисом ТВ (Changhong AI PONT).
+            - **Включен обязательный сервис `RenderingControl:1`** для полной совместимости с BubbleUPnP.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
