@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import org.videolan.vlc.media.MediaUtils
 import org.videolan.vlc.PlaybackService
 import java.io.*
@@ -199,7 +201,15 @@ object UpnpRendererServer {
                 Log.i(TAG, "UPnP Play requested for URI: $currentUri")
                 currentUri?.let { uri ->
                     CoroutineScope(Dispatchers.Main).launch {
-                        MediaUtils.openMediaNoUi(context, android.net.Uri.parse(uri))
+                        try {
+                            PlaybackService.start(context)
+                            val mw = org.videolan.medialibrary.MLServiceLocator.getAbstractMediaWrapper(android.net.Uri.parse(uri))
+                            val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
+                            service.load(mw)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error playing URI in PlaybackService: ${e.message}")
+                            MediaUtils.openMediaNoUi(context, android.net.Uri.parse(uri))
+                        }
                     }
                 }
                 soapEnvelope("<u:PlayResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
@@ -218,6 +228,24 @@ object UpnpRendererServer {
                 }
                 soapEnvelope("<u:StopResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
             }
+            soapAction.contains("Seek") -> {
+                val start = body.indexOf("<Target>")
+                val end = body.indexOf("</Target>")
+                if (start != -1 && end != -1) {
+                    val target = body.substring(start + "<Target>".length, end)
+                    val parts = target.split(":")
+                    if (parts.size == 3) {
+                        val h = parts[0].toLongOrNull() ?: 0L
+                        val m = parts[1].toLongOrNull() ?: 0L
+                        val s = parts[2].toDoubleOrNull() ?: 0.0
+                        val millis = (h * 3600 + m * 60 + s).toLong() * 1000L
+                        CoroutineScope(Dispatchers.Main).launch {
+                            PlaybackService.serviceFlow.value?.seek(millis)
+                        }
+                    }
+                }
+                soapEnvelope("<u:SeekResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
+            }
             soapAction.contains("GetTransportInfo") -> {
                 val isPlaying = PlaybackService.serviceFlow.value?.isPlaying == true
                 val state = if (isPlaying) "PLAYING" else "STOPPED"
@@ -227,6 +255,41 @@ object UpnpRendererServer {
                         <CurrentTransportStatus>OK</CurrentTransportStatus>
                         <CurrentSpeed>1</CurrentSpeed>
                     </u:GetTransportInfoResponse>
+                """.trimIndent())
+            }
+            soapAction.contains("GetMediaInfo") -> {
+                val lengthMs = PlaybackService.serviceFlow.value?.length ?: 0L
+                val lenStr = formatTrackDuration(lengthMs)
+                val curUri = currentUri ?: ""
+                soapEnvelope("""
+                    <u:GetMediaInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                        <NrTracks>1</NrTracks>
+                        <MediaDuration>$lenStr</MediaDuration>
+                        <CurrentURI>$curUri</CurrentURI>
+                        <CurrentURIMetaData></CurrentURIMetaData>
+                        <NextURI></NextURI>
+                        <NextURIMetaData></NextURIMetaData>
+                        <PlayMedium>NETWORK</PlayMedium>
+                        <RecordMedium>NOT_IMPLEMENTED</RecordMedium>
+                        <WriteStatus>NOT_IMPLEMENTED</WriteStatus>
+                    </u:GetMediaInfoResponse>
+                """.trimIndent())
+            }
+            soapAction.contains("GetDeviceCapabilities") -> {
+                soapEnvelope("""
+                    <u:GetDeviceCapabilitiesResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                        <PlayMedia>NETWORK,NONE</PlayMedia>
+                        <RecMedia>NOT_IMPLEMENTED</RecMedia>
+                        <RecQualityModes>NOT_IMPLEMENTED</RecQualityModes>
+                    </u:GetDeviceCapabilitiesResponse>
+                """.trimIndent())
+            }
+            soapAction.contains("GetTransportSettings") -> {
+                soapEnvelope("""
+                    <u:GetTransportSettingsResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                        <PlayMode>NORMAL</PlayMode>
+                        <RecQualityMode>NOT_IMPLEMENTED</RecQualityMode>
+                    </u:GetTransportSettingsResponse>
                 """.trimIndent())
             }
             soapAction.contains("GetPositionInfo") -> {
@@ -473,8 +536,12 @@ object UpnpRendererServer {
     <action><name>Play</name></action>
     <action><name>Pause</name></action>
     <action><name>Stop</name></action>
+    <action><name>Seek</name></action>
     <action><name>GetTransportInfo</name></action>
     <action><name>GetPositionInfo</name></action>
+    <action><name>GetMediaInfo</name></action>
+    <action><name>GetDeviceCapabilities</name></action>
+    <action><name>GetTransportSettings</name></action>
   </actionList>
   <serviceStateTable>
     <stateVariable sendEvents="no"><name>TransportState</name><dataType>string</dataType></stateVariable>
