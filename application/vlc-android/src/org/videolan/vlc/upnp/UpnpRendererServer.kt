@@ -114,6 +114,10 @@ object UpnpRendererServer {
             if (parts.size < 2) return
             val method = parts[0]
             val path = parts[1]
+
+            val headers = mutableMapOf<String, String>()
+            var line: String?
+            var contentLength = 0
             while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
                 val colon = line!!.indexOf(":")
                 if (colon != -1) {
