@@ -216,7 +216,7 @@ object UpnpRendererServer {
             }
             soapAction.contains("GetPositionInfo") -> {
                 val timeMs = PlaybackService.serviceFlow.value?.getTime() ?: 0L
-                val lengthMs = PlaybackService.serviceFlow.value?.getLength() ?: 0L
+                val lengthMs = PlaybackService.serviceFlow.value?.length ?: 0L
                 val timeStr = formatTrackDuration(timeMs)
                 val lenStr = formatTrackDuration(lengthMs)
                 val curUri = currentUri ?: ""
