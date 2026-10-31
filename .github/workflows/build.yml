@@ -56,15 +56,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v2.1
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.1)"
+          tag_name: vlc-tv-custom-v2.2
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.2)"
           body: |
-            ### VLC for Android TV с UPnP MediaRenderer v2.1
+            ### VLC for Android TV с полным DLNA MediaRenderer v2.2
             
-            **Что исправлено в v2.1:**
-            - **Гарантированный запуск UPnP рендерера в MainTvActivity**: служба стартует прямо при открытии ТВ-интерфейса.
-            - **MulticastSocket привязан ко всем активным сетевым интерфейсам**: надежный перехват SSDP M-SEARCH от BubbleUPnP через wlan0/eth0.
-            - **Периодический SSDP alive broadcast (15 сек)**: телевизор активно сообщает о себе в домашней сети.
+            **Что исправлено в v2.2:**
+            - **Добавлен обязательный сервис `RenderingControl:1`**: без него BubbleUPnP отбрасывал устройство при верификации UPnP стека (GetVolume, SetVolume, GetMute, SetMute).
+            - **Порт 8088 подтвержден открытым**: веб-демон успешно слушает входящие запросы.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

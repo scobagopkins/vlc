@@ -141,6 +141,15 @@ object UpnpRendererServer {
                     val xml = getConnectionManagerScpd()
                     sendResponse(out, "200 OK", "text/xml; charset=\"utf-8\"", xml)
                 }
+                path == "/renderingcontrol.xml" -> {
+                    val xml = getRenderingControlScpd()
+                    sendResponse(out, "200 OK", "text/xml; charset=\"utf-8\"", xml)
+                }
+                path.startsWith("/control/rc") -> {
+                    val soapAction = headers["soapaction"] ?: ""
+                    val responseXml = handleRenderingControl(soapAction)
+                    sendResponse(out, "200 OK", "text/xml; charset=\"utf-8\"", responseXml)
+                }
                 path.startsWith("/control/avt") -> {
                     val soapAction = headers["soapaction"] ?: ""
                     val responseXml = handleAvTransportControl(soapAction, body, context)
@@ -254,6 +263,24 @@ object UpnpRendererServer {
         """.trimIndent())
     }
 
+    private fun handleRenderingControl(soapAction: String): String {
+        return when {
+            soapAction.contains("GetVolume") -> soapEnvelope("""
+                <u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                    <CurrentVolume>100</CurrentVolume>
+                </u:GetVolumeResponse>
+            """.trimIndent())
+            soapAction.contains("GetMute") -> soapEnvelope("""
+                <u:GetMuteResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                    <CurrentMute>0</CurrentMute>
+                </u:GetMuteResponse>
+            """.trimIndent())
+            soapAction.contains("SetVolume") -> soapEnvelope("<u:SetVolumeResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
+            soapAction.contains("SetMute") -> soapEnvelope("<u:SetMuteResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
+            else -> soapEnvelope("<u:GenericResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
+        }
+    }
+
     private fun soapEnvelope(bodyContent: String): String {
         return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
                 "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\n" +
@@ -327,8 +354,9 @@ object UpnpRendererServer {
             "upnp:rootdevice",
             udn,
             "urn:schemas-upnp-org:device:MediaRenderer:1",
-            "urn:schemas-upnp-org:service:AVTransport:1",
-            "urn:schemas-upnp-org:service:ConnectionManager:1"
+            "urn:schemas-upnp-org:service:RenderingControl:1",
+            "urn:schemas-upnp-org:service:ConnectionManager:1",
+            "urn:schemas-upnp-org:service:AVTransport:1"
         )
         for (st in targets) {
             val notifyMsg = "NOTIFY * HTTP/1.1\r\n" +
@@ -362,12 +390,14 @@ object UpnpRendererServer {
                 matchingTargets.add("upnp:rootdevice")
                 matchingTargets.add(udn)
                 matchingTargets.add("urn:schemas-upnp-org:device:MediaRenderer:1")
-                matchingTargets.add("urn:schemas-upnp-org:service:AVTransport:1")
+                matchingTargets.add("urn:schemas-upnp-org:service:RenderingControl:1")
                 matchingTargets.add("urn:schemas-upnp-org:service:ConnectionManager:1")
+                matchingTargets.add("urn:schemas-upnp-org:service:AVTransport:1")
             }
             searchTarget == "upnp:rootdevice" -> matchingTargets.add("upnp:rootdevice")
             searchTarget == udn -> matchingTargets.add(udn)
             searchTarget.contains("MediaRenderer") -> matchingTargets.add("urn:schemas-upnp-org:device:MediaRenderer:1")
+            searchTarget.contains("RenderingControl") -> matchingTargets.add("urn:schemas-upnp-org:service:RenderingControl:1")
             searchTarget.contains("AVTransport") -> matchingTargets.add("urn:schemas-upnp-org:service:AVTransport:1")
             searchTarget.contains("ConnectionManager") -> matchingTargets.add("urn:schemas-upnp-org:service:ConnectionManager:1")
         }
@@ -409,11 +439,11 @@ object UpnpRendererServer {
     <UDN>$udn</UDN>
     <serviceList>
       <service>
-        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
-        <serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
-        <SCPDURL>/avtransport.xml</SCPDURL>
-        <controlURL>/control/avt</controlURL>
-        <eventSubURL>/events/avt</eventSubURL>
+        <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>
+        <SCPDURL>/renderingcontrol.xml</SCPDURL>
+        <controlURL>/control/rc</controlURL>
+        <eventSubURL>/events/rc</eventSubURL>
       </service>
       <service>
         <serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>
@@ -421,6 +451,13 @@ object UpnpRendererServer {
         <SCPDURL>/connectionmanager.xml</SCPDURL>
         <controlURL>/control/cm</controlURL>
         <eventSubURL>/events/cm</eventSubURL>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+        <SCPDURL>/avtransport.xml</SCPDURL>
+        <controlURL>/control/avt</controlURL>
+        <eventSubURL>/events/avt</eventSubURL>
       </service>
     </serviceList>
   </device>
@@ -457,6 +494,23 @@ object UpnpRendererServer {
   <serviceStateTable>
     <stateVariable sendEvents="no"><name>SourceProtocolInfo</name><dataType>string</dataType></stateVariable>
     <stateVariable sendEvents="no"><name>SinkProtocolInfo</name><dataType>string</dataType></stateVariable>
+  </serviceStateTable>
+</scpd>""".trimIndent()
+    }
+
+    private fun getRenderingControlScpd(): String {
+        return """<?xml version="1.0" encoding="utf-8"?>
+<scpd xmlns="urn:schemas-upnp-org:service-1-0">
+  <specVersion><major>1</major><minor>0</minor></specVersion>
+  <actionList>
+    <action><name>GetVolume</name></action>
+    <action><name>SetVolume</name></action>
+    <action><name>GetMute</name></action>
+    <action><name>SetMute</name></action>
+  </actionList>
+  <serviceStateTable>
+    <stateVariable sendEvents="no"><name>Volume</name><dataType>ui2</dataType></stateVariable>
+    <stateVariable sendEvents="no"><name>Mute</name><dataType>boolean</dataType></stateVariable>
   </serviceStateTable>
 </scpd>""".trimIndent()
     }
