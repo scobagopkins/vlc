@@ -21,6 +21,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         compileSdk rootProject.ext.compileSdkVersion
+        resValue 'string', 'tv_provider_authority', "${rootProject.ext.appId}.tv"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles 'consumer-rules.pro'
@@ -30,6 +31,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            resValue 'string', 'tv_provider_authority', "${rootProject.ext.appId}.debug.tv"
         }
         dev {
             initWith debug

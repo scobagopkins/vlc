@@ -40,7 +40,8 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           mkdir -p ~/.android
-          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          # Use fixed deterministic keystore
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -startdate "2020/01/01 00:00:00" || true
 
       - name: Build Application APK
         run: |
@@ -56,15 +57,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v2.7
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.7 with AudioPlayerActivity launch)"
+          tag_name: vlc-tv-custom-v2.8
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.8)"
           body: |
-            ### VLC for Android TV с прямым запуском AudioPlayerActivity v2.7
+            ### VLC for Android TV v2.8 с исправлением установки
             
-            **Что исправлено в v2.7:**
-            - **Прямой метод `service.loadLocation(uri)`**: воспроизводит чистый сетевой URL без посредничества MediaLibrary SQLite.
-            - **Принудительное открытие экрана плеера на телевизоре**: при получении трека из BubbleUPnP на ТВ открывается нативная активность плеера `AudioPlayerActivity` (обложка, название, таймлайн).
-            - **Расширенный лог `/debug`**: выводит статус каждого шага вызова плеера.
+            **Что исправлено в v2.8:**
+            - **Исправлен конфликт ContentProvider (`tv_provider_authority`)**: в модуле `television` для debug-сборок authority теперь явно совпадает с основным пакетом (`org.videolan.vlc.debug.tv`).
+            - **Фиксированный сертификат подписи**: теперь обновления гарантированно ставятся поверх без переустановки.
+            - **Прямой вызов `loadLocation`**: трек начинает играть моментально.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
