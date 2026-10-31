@@ -8,7 +8,6 @@ import org.videolan.vlc.media.MediaUtils
 import org.videolan.vlc.PlaybackService
 import java.io.*
 import java.net.*
-import java.util.UUID
 
 object UpnpRendererServer {
     private const val TAG = "VLC/UpnpRenderer"
@@ -20,7 +19,7 @@ object UpnpRendererServer {
     private var scope: CoroutineScope? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var httpServer: ServerSocket? = null
-    private var ssdpSocket: MulticastSocket? = null
+    private val ssdpSockets = mutableListOf<MulticastSocket>()
     private var udn = "uuid:e9b1d283-7c48-4a92-b430-8d5f3a741c9a"
     private var currentUri: String? = null
 
@@ -32,7 +31,7 @@ object UpnpRendererServer {
         try {
             val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             multicastLock = wifi?.createMulticastLock("VLCUpnpMulticast")?.apply {
-                setReferenceCounted(true)
+                setReferenceCounted(false)
                 acquire()
             }
         } catch (e: Exception) {
@@ -49,12 +48,16 @@ object UpnpRendererServer {
         scope?.cancel()
         scope = null
         try { httpServer?.close() } catch (_: Exception) {}
-        try { ssdpSocket?.close() } catch (_: Exception) {}
+        synchronized(ssdpSockets) {
+            ssdpSockets.forEach { try { it.close() } catch (_: Exception) {} }
+            ssdpSockets.clear()
+        }
         try { multicastLock?.release() } catch (_: Exception) {}
         multicastLock = null
     }
 
-    private fun getLocalIpAddress(): String? {
+    private fun getActiveInterfaces(): List<Pair<NetworkInterface, InetAddress>> {
+        val list = mutableListOf<Pair<NetworkInterface, InetAddress>>()
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
@@ -64,12 +67,16 @@ object UpnpRendererServer {
                 while (addrs.hasMoreElements()) {
                     val addr = addrs.nextElement()
                     if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                        return addr.hostAddress
+                        list.add(Pair(intf, addr))
                     }
                 }
             }
         } catch (_: Exception) {}
-        return null
+        return list
+    }
+
+    private fun getLocalIpAddress(): String? {
+        return getActiveInterfaces().firstOrNull()?.second?.hostAddress
     }
 
     private suspend fun startHttpServer(context: Context) {
@@ -93,7 +100,6 @@ object UpnpRendererServer {
             val requestLine = reader.readLine() ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
-            val method = parts[0]
             val path = parts[1]
 
             val headers = mutableMapOf<String, String>()
@@ -269,25 +275,48 @@ object UpnpRendererServer {
         withContext(Dispatchers.IO) {
             try {
                 val group = InetAddress.getByName(SSDP_MULTICAST)
-                ssdpSocket = MulticastSocket(SSDP_PORT).apply {
-                    reuseAddress = true
-                    joinGroup(group)
+                val activeList = getActiveInterfaces()
+
+                for ((netIf, addr) in activeList) {
+                    try {
+                        val sock = MulticastSocket(SSDP_PORT).apply {
+                            reuseAddress = true
+                            networkInterface = netIf
+                            try {
+                                joinGroup(InetSocketAddress(group, SSDP_PORT), netIf)
+                            } catch (_: Exception) {
+                                joinGroup(group)
+                            }
+                        }
+                        synchronized(ssdpSockets) { ssdpSockets.add(sock) }
+
+                        launch {
+                            val buf = ByteArray(4096)
+                            while (isRunning) {
+                                val packet = DatagramPacket(buf, buf.size)
+                                try {
+                                    sock.receive(packet)
+                                } catch (_: Exception) { break }
+                                val msg = String(packet.data, 0, packet.length, Charsets.UTF_8)
+                                if (msg.startsWith("M-SEARCH", ignoreCase = true)) {
+                                    handleSsdpSearch(sock, msg, packet.address, packet.port)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not bind SSDP socket on interface ${netIf.name}: ${e.message}")
+                    }
                 }
 
-                // Send initial alive announcements
-                sendAliveBroadcast()
-
-                val buf = ByteArray(2048)
-                while (isRunning) {
-                    val packet = DatagramPacket(buf, buf.size)
-                    ssdpSocket?.receive(packet) ?: break
-                    val msg = String(packet.data, 0, packet.length, Charsets.UTF_8)
-                    if (msg.startsWith("M-SEARCH", ignoreCase = true)) {
-                        handleSsdpSearch(msg, packet.address, packet.port)
+                // Send SSDP alive announcements periodically
+                launch {
+                    while (isRunning) {
+                        sendAliveBroadcast()
+                        delay(15_000L)
                     }
                 }
             } catch (e: Exception) {
-                if (isRunning) Log.e(TAG, "SSDP Listener error: ${e.message}")
+                if (isRunning) Log.e(TAG, "SSDP Listener root error: ${e.message}")
             }
         }
     }
@@ -311,14 +340,18 @@ object UpnpRendererServer {
                     "SERVER: Linux/1.0 UPnP/1.0 VLC-Android-TV/1.0\r\n" +
                     "USN: $udn::$st\r\n\r\n"
             val bytes = notifyMsg.toByteArray(Charsets.UTF_8)
-            try {
-                val p = DatagramPacket(bytes, bytes.size, InetAddress.getByName(SSDP_MULTICAST), SSDP_PORT)
-                ssdpSocket?.send(p)
-            } catch (_: Exception) {}
+            synchronized(ssdpSockets) {
+                for (sock in ssdpSockets) {
+                    try {
+                        val p = DatagramPacket(bytes, bytes.size, InetAddress.getByName(SSDP_MULTICAST), SSDP_PORT)
+                        sock.send(p)
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
-    private fun handleSsdpSearch(request: String, senderAddr: InetAddress, senderPort: Int) {
+    private fun handleSsdpSearch(sock: DatagramSocket, request: String, senderAddr: InetAddress, senderPort: Int) {
         val ip = getLocalIpAddress() ?: return
         val stLine = request.lines().find { it.startsWith("ST:", ignoreCase = true) } ?: return
         val searchTarget = stLine.substring(3).trim()
@@ -351,7 +384,7 @@ object UpnpRendererServer {
             val bytes = response.toByteArray(Charsets.UTF_8)
             try {
                 val responsePacket = DatagramPacket(bytes, bytes.size, senderAddr, senderPort)
-                ssdpSocket?.send(responsePacket)
+                sock.send(responsePacket)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to send SSDP response: ${e.message}")
             }

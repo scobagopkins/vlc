@@ -79,6 +79,9 @@ class MainTvActivity : BaseTvActivity(), StoragePermissionsDelegate.CustomAction
         val fragmentManager = supportFragmentManager
         browseFragment = fragmentManager.findFragmentById(R.id.browse_fragment) as MainTvFragment
         progressBar = findViewById(R.id.tv_main_progress)
+        try {
+            org.videolan.vlc.upnp.UpnpRendererServer.start(this)
+        } catch (_: Exception) {}
         lifecycleScope.launch {
             AutoUpdate.clean(this@MainTvActivity.application)
             if (!Settings.getInstance(this@MainTvActivity).getBoolean(KEY_SHOW_UPDATE, true)) return@launch

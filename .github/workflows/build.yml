@@ -56,15 +56,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v2.0
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.0)"
+          tag_name: vlc-tv-custom-v2.1
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.1)"
           body: |
-            ### VLC for Android TV с UPnP MediaRenderer и кастомными разделами
+            ### VLC for Android TV с UPnP MediaRenderer v2.1
             
-            **Что нового в v2.0:**
-            - **Встроен UPnP / DLNA MediaRenderer**: телевизор объявляет себя в сети (SSDP) и принимает потоки прямо из **BubbleUPnP** (SetAVTransportURI, Play, Pause, Stop, Seek, GetPositionInfo).
-            - **Восстановлено «Избранное»**: теперь пункт включен по умолчанию и им можно управлять из настроек.
-            - **Сгенерированы компактные APK**: отдельный легкий билд `armeabi-v7a` (~35 МБ) для телевизоров и универсальный `all.apk`.
+            **Что исправлено в v2.1:**
+            - **Гарантированный запуск UPnP рендерера в MainTvActivity**: служба стартует прямо при открытии ТВ-интерфейса.
+            - **MulticastSocket привязан ко всем активным сетевым интерфейсам**: надежный перехват SSDP M-SEARCH от BubbleUPnP через wlan0/eth0.
+            - **Периодический SSDP alive broadcast (15 сек)**: телевизор активно сообщает о себе в домашней сети.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
