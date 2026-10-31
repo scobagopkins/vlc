@@ -56,14 +56,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v2.5
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.5)"
+          tag_name: vlc-tv-custom-v2.6
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.6 with /debug logs)"
           body: |
-            ### VLC for Android TV с GENA Eventing и автозагрузкой трека v2.5
+            ### VLC for Android TV с онлайн-диагностикой /debug v2.6
             
-            **Что исправлено в v2.5:**
-            - **Внедрен протокол GENA Eventing (SUBSCRIBE / UNSUBSCRIBE)**: BubbleUPnP при выборе рендерера сразу подписывается на события через HTTP SUBSCRIBE. Без ответа с кодом 200 и заголовком SID контроллер зависал в ожидании готовности шины событий.
-            - **Мгновенная предзагрузка трека на `SetAVTransportURI`**: плеер начинает подтягивать аудиопоток еще до команды Play.
+            **Что добавлено в v2.6:**
+            - **Встроен веб-логгер реального времени**: открыв в браузере телефона `http://192.168.1.98:8188/debug`, можно вживую увидеть ВСЕ запросы и ошибки между BubbleUPnP и VLC.
+            - Поддержка GENA SUBSCRIBE / UNSUBSCRIBE.
+            - Автозапуск и прямая передача аудио в PlaybackService.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

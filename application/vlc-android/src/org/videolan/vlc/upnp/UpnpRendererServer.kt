@@ -24,6 +24,16 @@ object UpnpRendererServer {
     private val ssdpSockets = mutableListOf<MulticastSocket>()
     private var udn = "uuid:e9b1d283-7c48-4a92-b430-8d5f3a741c9a"
     private var currentUri: String? = null
+    private val debugLogs = java.util.LinkedList<String>()
+
+    private fun log(msg: String) {
+        val entry = "${java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())} $msg"
+        Log.i(TAG, entry)
+        synchronized(debugLogs) {
+            if (debugLogs.size > 200) debugLogs.removeFirst()
+            debugLogs.add(entry)
+        }
+    }
 
     fun start(context: Context) {
         if (isRunning) return
@@ -104,10 +114,6 @@ object UpnpRendererServer {
             if (parts.size < 2) return
             val method = parts[0]
             val path = parts[1]
-
-            val headers = mutableMapOf<String, String>()
-            var line: String?
-            var contentLength = 0
             while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
                 val colon = line!!.indexOf(":")
                 if (colon != -1) {
@@ -117,6 +123,7 @@ object UpnpRendererServer {
                     if (k == "content-length") contentLength = v.toIntOrNull() ?: 0
                 }
             }
+            log("INCOMING: $method $path | soapaction=${headers["soapaction"]}")
 
             var body = ""
             if (contentLength > 0) {
@@ -181,6 +188,10 @@ object UpnpRendererServer {
                     val responseXml = handleConnectionManagerControl()
                     sendResponse(out, "200 OK", "text/xml; charset=\"utf-8\"", responseXml)
                 }
+                path == "/debug" || path == "/logs" -> {
+                    val logs = synchronized(debugLogs) { debugLogs.joinToString("\n") }
+                    sendResponse(out, "200 OK", "text/plain; charset=\"utf-8\"", logs.ifEmpty { "No logs recorded yet" })
+                }
                 else -> {
                     sendResponse(out, "404 Not Found", "text/plain", "Not Found")
                 }
@@ -193,6 +204,7 @@ object UpnpRendererServer {
     }
 
     private fun sendResponse(out: OutputStream, status: String, contentType: String, content: String) {
+        log("OUTGOING: $status ($contentType, ${content.length}b)")
         val bytes = content.toByteArray(Charsets.UTF_8)
         val header = "HTTP/1.1 $status\r\n" +
                 "Content-Type: $contentType\r\n" +
