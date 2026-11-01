@@ -2,12 +2,17 @@ package org.videolan.vlc.upnp
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import org.videolan.vlc.media.MediaUtils
+import org.videolan.medialibrary.MLServiceLocator
+import org.videolan.medialibrary.interfaces.media.MediaWrapper
+import org.videolan.resources.AndroidDevices
+import org.videolan.tools.AppScope
 import org.videolan.vlc.PlaybackService
 import java.io.*
 import java.net.*
@@ -51,8 +56,9 @@ object UpnpRendererServer {
             Log.w(TAG, "Could not acquire MulticastLock: ${e.message}")
         }
 
-        scope?.launch { startHttpServer(context) }
-        scope?.launch { startSsdpListener(context) }
+        val appContext = context.applicationContext ?: context
+        scope?.launch { startHttpServer(appContext) }
+        scope?.launch { startSsdpListener(appContext) }
         Log.i(TAG, "UPnP MediaRenderer service started on port $HTTP_PORT")
     }
 
@@ -108,38 +114,61 @@ object UpnpRendererServer {
 
     private fun handleHttpClient(socket: Socket, context: Context) {
         try {
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            socket.soTimeout = 10000
+            val input = BufferedInputStream(socket.getInputStream())
             val out = socket.getOutputStream()
-            val requestLine = reader.readLine() ?: return
+
+            val headerBytes = ByteArrayOutputStream()
+            var prev3 = -1
+            var prev2 = -1
+            var prev1 = -1
+            while (isRunning) {
+                val b = input.read()
+                if (b == -1) break
+                headerBytes.write(b)
+                if (prev3 == '\r'.code && prev2 == '\n'.code && prev1 == '\r'.code && b == '\n'.code) {
+                    break
+                }
+                prev3 = prev2
+                prev2 = prev1
+                prev1 = b
+            }
+
+            if (headerBytes.size() == 0) return
+            val headerText = headerBytes.toString("UTF-8")
+            val lines = headerText.split("\r\n")
+            val requestLine = lines.firstOrNull() ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
-            val method = parts[0]
+            val method = parts[0].uppercase()
             val path = parts[1]
 
             val headers = mutableMapOf<String, String>()
-            var line: String?
             var contentLength = 0
-            while (reader.readLine().also { line = it } != null && line!!.isNotEmpty()) {
-                val colon = line!!.indexOf(":")
+            for (i in 1 until lines.size) {
+                val line = lines[i]
+                if (line.isEmpty()) continue
+                val colon = line.indexOf(":")
                 if (colon != -1) {
-                    val k = line!!.substring(0, colon).trim().lowercase()
-                    val v = line!!.substring(colon + 1).trim()
+                    val k = line.substring(0, colon).trim().lowercase()
+                    val v = line.substring(colon + 1).trim()
                     headers[k] = v
                     if (k == "content-length") contentLength = v.toIntOrNull() ?: 0
                 }
             }
-            log("INCOMING: $method $path | soapaction=${headers["soapaction"]}")
+            val soapAction = headers["soapaction"]?.replace("\"", "") ?: ""
+            log("INCOMING: $method $path | soapaction=$soapAction")
 
             var body = ""
             if (contentLength > 0) {
-                val buf = CharArray(contentLength)
+                val bodyBytes = ByteArray(contentLength)
                 var readTotal = 0
                 while (readTotal < contentLength) {
-                    val r = reader.read(buf, readTotal, contentLength - readTotal)
+                    val r = input.read(bodyBytes, readTotal, contentLength - readTotal)
                     if (r == -1) break
                     readTotal += r
                 }
-                body = String(buf, 0, readTotal)
+                body = String(bodyBytes, 0, readTotal, Charsets.UTF_8)
             }
 
             when {
@@ -180,12 +209,10 @@ object UpnpRendererServer {
                     sendResponse(out, "200 OK", "text/xml; charset=\"utf-8\"", xml)
                 }
                 path.startsWith("/control/rc") -> {
-                    val soapAction = headers["soapaction"] ?: ""
-                    val responseXml = handleRenderingControl(soapAction)
+                    val responseXml = handleRenderingControl(soapAction, body, context)
                     sendResponse(out, "200 OK", "text/xml; charset=\"utf-8\"", responseXml)
                 }
                 path.startsWith("/control/avt") -> {
-                    val soapAction = headers["soapaction"] ?: ""
                     val responseXml = handleAvTransportControl(soapAction, body, context)
                     sendResponse(out, "200 OK", "text/xml; charset=\"utf-8\"", responseXml)
                 }
@@ -221,92 +248,128 @@ object UpnpRendererServer {
         out.flush()
     }
 
+    private fun extractTagValue(xml: String, tagName: String): String? {
+        val regex = Regex("<(?:[a-zA-Z0-9_]+:)?$tagName(?:\\s+[^>]*)?>([\\s\\S]*?)</(?:[a-zA-Z0-9_]+:)?$tagName>", RegexOption.IGNORE_CASE)
+        val match = regex.find(xml) ?: return null
+        var content = match.groupValues[1].trim()
+        if (content.startsWith("<![CDATA[") && content.endsWith("]]>")) {
+            content = content.substring(9, content.length - 3).trim()
+        }
+        return content.replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .trim()
+    }
+
     private fun handleAvTransportControl(soapAction: String, body: String, context: Context): String {
         return when {
-            soapAction.contains("SetAVTransportURI") -> {
-                val start = body.indexOf("<CurrentURI>")
-                val end = body.indexOf("</CurrentURI>")
-                if (start != -1 && end != -1) {
-                    val rawUri = body.substring(start + "<CurrentURI>".length, end)
-                    val uri = rawUri.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").trim()
+            soapAction.contains("SetAVTransportURI") || body.contains("SetAVTransportURI") -> {
+                val uri = extractTagValue(body, "CurrentURI")
+                if (!uri.isNullOrEmpty()) {
                     currentUri = uri
                     Log.i(TAG, "UPnP SetAVTransportURI: $uri")
-                    if (uri.isNotEmpty()) {
-                        log("ACTION: SetAVTransportURI received $uri")
-                    }
+                    log("ACTION: SetAVTransportURI received $uri")
+                } else {
+                    log("ACTION WARN: SetAVTransportURI received but CurrentURI was empty/not found in body (${body.length}b)")
                 }
                 soapEnvelope("<u:SetAVTransportURIResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
             }
-            soapAction.contains("Play") -> {
-                Log.i(TAG, "UPnP Play requested for URI: $currentUri")
-                log("ACTION: UPnP Play requested")
-                currentUri?.let { uri ->
-                    CoroutineScope(Dispatchers.Main).launch {
+            soapAction.contains("Play") || body.contains(":Play") || body.contains("<Play>") -> {
+                var uri = currentUri
+                if (uri.isNullOrEmpty()) {
+                    uri = extractTagValue(body, "CurrentURI")
+                    if (!uri.isNullOrEmpty()) {
+                        currentUri = uri
+                    }
+                }
+                Log.i(TAG, "UPnP Play requested for URI: $uri")
+                log("ACTION: UPnP Play requested (uri=$uri)")
+                if (!uri.isNullOrEmpty()) {
+                    val finalUri = uri
+                    val appContext = context.applicationContext ?: context
+                    AppScope.launch(Dispatchers.Main) {
                         try {
-                            log("ACTION: Starting playback for $uri")
-                            val mw = org.videolan.medialibrary.MLServiceLocator.getAbstractMediaWrapper(android.net.Uri.parse(uri))
-                            
-                            // Method 1: Play via PlaybackService
-                            PlaybackService.start(context)
-                            val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
-                            service.load(mw)
-                            service.play()
-                            log("ACTION: Successfully loaded & played in PlaybackService")
-
-                            // Method 2: Launch TV AudioPlayerActivity Intent
-                            try {
-                                val intent = Intent().setClassName(context, "org.videolan.television.ui.audioplayer.AudioPlayerActivity").apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                    putExtra("media_list", arrayListOf(mw))
-                                    putExtra("media_position", 0)
+                            log("ACTION: Starting playback for $finalUri")
+                            val parsedUri = Uri.parse(finalUri)
+                            val mw = MLServiceLocator.getAbstractMediaWrapper(parsedUri).apply {
+                                val path = parsedUri.path?.lowercase() ?: ""
+                                val isVideo = path.endsWith(".mp4") || path.endsWith(".mkv") || path.endsWith(".avi") ||
+                                              path.endsWith(".mov") || path.endsWith(".webm") || path.endsWith(".ts")
+                                if (!isVideo) {
+                                    type = MediaWrapper.TYPE_AUDIO
+                                    addFlags(MediaWrapper.MEDIA_FORCE_AUDIO)
+                                } else {
+                                    type = MediaWrapper.TYPE_VIDEO
                                 }
-                                context.startActivity(intent)
-                                log("ACTION: AudioPlayerActivity launched successfully")
-                            } catch (e: Exception) {
-                                log("ACTION: Activity notice: ${e.message}")
+                            }
+
+                            PlaybackService.start(appContext)
+                            val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
+                            service.load(listOf(mw), 0)
+                            log("ACTION: Successfully loaded & started in PlaybackService")
+
+                            if (AndroidDevices.isAndroidTv && mw.type == MediaWrapper.TYPE_AUDIO) {
+                                try {
+                                    val intent = Intent().setClassName(appContext, "org.videolan.television.ui.audioplayer.AudioPlayerActivity").apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    }
+                                    appContext.startActivity(intent)
+                                    log("ACTION: AudioPlayerActivity displayed successfully")
+                                } catch (e: Exception) {
+                                    log("ACTION: Activity notice: ${e.message}")
+                                }
                             }
                         } catch (e: Exception) {
                             log("ACTION ERROR Play: ${e.message}")
                         }
                     }
+                } else {
+                    log("ACTION ERROR: Play requested but currentUri is null/empty")
                 }
                 soapEnvelope("<u:PlayResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
             }
-            soapAction.contains("Pause") -> {
+            soapAction.contains("Pause") || body.contains(":Pause") || body.contains("<Pause>") -> {
                 Log.i(TAG, "UPnP Pause requested")
-                CoroutineScope(Dispatchers.Main).launch {
+                log("ACTION: UPnP Pause requested")
+                AppScope.launch(Dispatchers.Main) {
                     PlaybackService.serviceFlow.value?.pause()
                 }
                 soapEnvelope("<u:PauseResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
             }
-            soapAction.contains("Stop") -> {
+            soapAction.contains("Stop") || body.contains(":Stop") || body.contains("<Stop>") -> {
                 Log.i(TAG, "UPnP Stop requested")
-                CoroutineScope(Dispatchers.Main).launch {
+                log("ACTION: UPnP Stop requested")
+                AppScope.launch(Dispatchers.Main) {
                     PlaybackService.serviceFlow.value?.stop()
                 }
                 soapEnvelope("<u:StopResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
             }
-            soapAction.contains("Seek") -> {
-                val start = body.indexOf("<Target>")
-                val end = body.indexOf("</Target>")
-                if (start != -1 && end != -1) {
-                    val target = body.substring(start + "<Target>".length, end)
+            soapAction.contains("Seek") || body.contains(":Seek") || body.contains("<Seek>") -> {
+                val target = extractTagValue(body, "Target")
+                if (target != null) {
                     val parts = target.split(":")
                     if (parts.size == 3) {
                         val h = parts[0].toLongOrNull() ?: 0L
                         val m = parts[1].toLongOrNull() ?: 0L
                         val s = parts[2].toDoubleOrNull() ?: 0.0
                         val millis = (h * 3600 + m * 60 + s).toLong() * 1000L
-                        CoroutineScope(Dispatchers.Main).launch {
+                        AppScope.launch(Dispatchers.Main) {
                             PlaybackService.serviceFlow.value?.seek(millis)
                         }
                     }
                 }
                 soapEnvelope("<u:SeekResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
             }
-            soapAction.contains("GetTransportInfo") -> {
-                val isPlaying = PlaybackService.serviceFlow.value?.isPlaying == true
-                val state = if (isPlaying) "PLAYING" else "STOPPED"
+            soapAction.contains("GetTransportInfo") || body.contains("GetTransportInfo") -> {
+                val service = PlaybackService.serviceFlow.value
+                val state = when {
+                    service?.isPlaying == true -> "PLAYING"
+                    service?.isPaused == true -> "PAUSED_PLAYBACK"
+                    currentUri != null -> "STOPPED"
+                    else -> "NO_MEDIA_PRESENT"
+                }
                 soapEnvelope("""
                     <u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
                         <CurrentTransportState>$state</CurrentTransportState>
@@ -315,7 +378,7 @@ object UpnpRendererServer {
                     </u:GetTransportInfoResponse>
                 """.trimIndent())
             }
-            soapAction.contains("GetMediaInfo") -> {
+            soapAction.contains("GetMediaInfo") || body.contains("GetMediaInfo") -> {
                 val lengthMs = PlaybackService.serviceFlow.value?.length ?: 0L
                 val lenStr = formatTrackDuration(lengthMs)
                 val curUri = currentUri ?: ""
@@ -350,9 +413,10 @@ object UpnpRendererServer {
                     </u:GetTransportSettingsResponse>
                 """.trimIndent())
             }
-            soapAction.contains("GetPositionInfo") -> {
-                val timeMs = PlaybackService.serviceFlow.value?.getTime() ?: 0L
-                val lengthMs = PlaybackService.serviceFlow.value?.length ?: 0L
+            soapAction.contains("GetPositionInfo") || body.contains("GetPositionInfo") -> {
+                val service = PlaybackService.serviceFlow.value
+                val timeMs = service?.getTime() ?: 0L
+                val lengthMs = service?.length ?: 0L
                 val timeStr = formatTrackDuration(timeMs)
                 val lenStr = formatTrackDuration(lengthMs)
                 val curUri = currentUri ?: ""
@@ -384,20 +448,55 @@ object UpnpRendererServer {
         """.trimIndent())
     }
 
-    private fun handleRenderingControl(soapAction: String): String {
+    private fun handleRenderingControl(soapAction: String, body: String, context: Context): String {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         return when {
-            soapAction.contains("GetVolume") -> soapEnvelope("""
-                <u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                    <CurrentVolume>100</CurrentVolume>
-                </u:GetVolumeResponse>
-            """.trimIndent())
-            soapAction.contains("GetMute") -> soapEnvelope("""
-                <u:GetMuteResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                    <CurrentMute>0</CurrentMute>
-                </u:GetMuteResponse>
-            """.trimIndent())
-            soapAction.contains("SetVolume") -> soapEnvelope("<u:SetVolumeResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
-            soapAction.contains("SetMute") -> soapEnvelope("<u:SetMuteResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
+            soapAction.contains("GetVolume") || body.contains("GetVolume") -> {
+                val currentVol = am?.let {
+                    val max = it.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    if (max > 0) (it.getStreamVolume(AudioManager.STREAM_MUSIC) * 100) / max else 100
+                } ?: 100
+                soapEnvelope("""
+                    <u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                        <CurrentVolume>$currentVol</CurrentVolume>
+                    </u:GetVolumeResponse>
+                """.trimIndent())
+            }
+            soapAction.contains("GetMute") || body.contains("GetMute") -> {
+                val isMuted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    am?.isStreamMute(AudioManager.STREAM_MUSIC) == true
+                } else {
+                    am?.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+                }
+                val muteVal = if (isMuted) "1" else "0"
+                soapEnvelope("""
+                    <u:GetMuteResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                        <CurrentMute>$muteVal</CurrentMute>
+                    </u:GetMuteResponse>
+                """.trimIndent())
+            }
+            soapAction.contains("SetVolume") || body.contains("SetVolume") -> {
+                val desiredVol = extractTagValue(body, "DesiredVolume")?.toIntOrNull()
+                if (desiredVol != null && am != null) {
+                    val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val targetVol = (desiredVol.coerceIn(0, 100) * max) / 100
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                }
+                soapEnvelope("<u:SetVolumeResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
+            }
+            soapAction.contains("SetMute") || body.contains("SetMute") -> {
+                val desiredMute = extractTagValue(body, "DesiredMute")
+                if (desiredMute != null && am != null) {
+                    val mute = desiredMute == "1" || desiredMute.equals("true", ignoreCase = true)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        am.setStreamMute(AudioManager.STREAM_MUSIC, mute)
+                    }
+                }
+                soapEnvelope("<u:SetMuteResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
+            }
             else -> soapEnvelope("<u:GenericResponse xmlns:u=\"urn:schemas-upnp-org:service:RenderingControl:1\"/>")
         }
     }
