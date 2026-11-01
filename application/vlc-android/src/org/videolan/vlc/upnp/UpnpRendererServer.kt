@@ -232,27 +232,7 @@ object UpnpRendererServer {
                     currentUri = uri
                     Log.i(TAG, "UPnP SetAVTransportURI: $uri")
                     if (uri.isNotEmpty()) {
-                        log("ACTION: Triggering playback for $uri")
-                        CoroutineScope(Dispatchers.Main).launch {
-                            try {
-                                PlaybackService.start(context)
-                                val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
-                                service.loadLocation(uri)
-                                log("ACTION: Successfully loaded location into PlaybackService")
-                                
-                                // Open TV Audio Player UI
-                                try {
-                                    val intent = Intent().setClassName(context, "org.videolan.television.ui.audioplayer.AudioPlayerActivity").apply {
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    log("ACTION: AudioPlayerActivity start notice: ${e.message}")
-                                }
-                            } catch (e: Exception) {
-                                log("ACTION ERROR: ${e.message}")
-                            }
-                        }
+                        log("ACTION: SetAVTransportURI received $uri")
                     }
                 }
                 soapEnvelope("<u:SetAVTransportURIResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"/>")
@@ -263,10 +243,18 @@ object UpnpRendererServer {
                 currentUri?.let { uri ->
                     CoroutineScope(Dispatchers.Main).launch {
                         try {
-                            PlaybackService.start(context)
-                            val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
-                            service.loadLocation(uri)
-                            log("ACTION: Play command triggered loadLocation")
+                            log("ACTION: Starting playback for $uri")
+                            val curAct = org.videolan.tools.AppContextProvider.currentActivity
+                            val mw = org.videolan.medialibrary.MLServiceLocator.getAbstractMediaWrapper(android.net.Uri.parse(uri))
+                            if (curAct != null) {
+                                org.videolan.television.ui.TvUtil.playMedia(curAct, listOf(mw), 0)
+                                log("ACTION: Successfully launched via TvUtil.playMedia")
+                            } else {
+                                PlaybackService.start(context)
+                                val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
+                                service.load(mw)
+                                log("ACTION: Fallback loaded mw into PlaybackService")
+                            }
                         } catch (e: Exception) {
                             log("ACTION ERROR Play: ${e.message}")
                         }
