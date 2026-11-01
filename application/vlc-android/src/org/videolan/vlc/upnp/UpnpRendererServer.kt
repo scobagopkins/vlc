@@ -244,16 +244,26 @@ object UpnpRendererServer {
                     CoroutineScope(Dispatchers.Main).launch {
                         try {
                             log("ACTION: Starting playback for $uri")
-                            val curAct = org.videolan.tools.AppContextProvider.currentActivity
                             val mw = org.videolan.medialibrary.MLServiceLocator.getAbstractMediaWrapper(android.net.Uri.parse(uri))
-                            if (curAct != null) {
-                                org.videolan.television.ui.TvUtil.playMedia(curAct, listOf(mw), 0)
-                                log("ACTION: Successfully launched via TvUtil.playMedia")
-                            } else {
-                                PlaybackService.start(context)
-                                val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
-                                service.load(mw)
-                                log("ACTION: Fallback loaded mw into PlaybackService")
+                            
+                            // Method 1: Play via PlaybackService
+                            PlaybackService.start(context)
+                            val service = PlaybackService.instance ?: PlaybackService.serviceFlow.filterNotNull().first()
+                            service.load(mw)
+                            service.play()
+                            log("ACTION: Successfully loaded & played in PlaybackService")
+
+                            // Method 2: Launch TV AudioPlayerActivity Intent
+                            try {
+                                val intent = Intent().setClassName(context, "org.videolan.television.ui.audioplayer.AudioPlayerActivity").apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    putExtra("media_list", arrayListOf(mw))
+                                    putExtra("media_position", 0)
+                                }
+                                context.startActivity(intent)
+                                log("ACTION: AudioPlayerActivity launched successfully")
+                            } catch (e: Exception) {
+                                log("ACTION: Activity notice: ${e.message}")
                             }
                         } catch (e: Exception) {
                             log("ACTION ERROR Play: ${e.message}")

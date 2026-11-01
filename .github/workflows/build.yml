@@ -57,13 +57,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v3.2
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v3.2 Release)"
+          tag_name: vlc-tv-custom-v3.3
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v3.3 Release)"
           body: |
-            ### VLC for Android TV v3.2 Release
+            ### VLC for Android TV v3.3 Release
             
-            **Что исправлено в v3.2:**
-            - **Запуск через TvUtil.playMedia**: нативный ТВ-роутинг Android TV Leanback для открытия экрана плеера и воспроизведения потока.
+            **Что исправлено в v3.3:**
+            - **Двухуровневый запуск звука**: прямой запуск `service.load(mw) + service.play()` и вызов активности `AudioPlayerActivity` через глобальный `Intent`.
+            - Устранена циклическая зависимость Gradle между модулями `vlc-android` и `television`.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
