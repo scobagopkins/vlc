@@ -48,24 +48,10 @@ android {
 
     signingConfigs {
         release {
-            /*
-            To set this properties, create file gradle.properties with these 3 props.
-            e.g.
-            keyStoreFile=/home/<username>/.android/debug.keystore
-            storealias=androiddebugkey
-            storepwd=android
-             */
-            if (project.hasProperty('keyStoreFile')) {
-                storeFile file(project.findProperty('keyStoreFile'))
-                keyAlias project.findProperty('storealias')
-                if (System.getenv('PASSWORD_KEYSTORE') != null && !System.getenv('PASSWORD_KEYSTORE').isEmpty()) {
-                    storePassword = System.getenv('PASSWORD_KEYSTORE')
-                    keyPassword = System.getenv('PASSWORD_KEYSTORE')
-                } else {
-                    storePassword project.findProperty('storepwd')
-                    keyPassword project.findProperty('storepwd')
-                }
-            }
+            storeFile file("/tmp/release.keystore")
+            storePassword "android"
+            keyAlias "androidreleasekey"
+            keyPassword "android"
         }
     }
     androidComponents {
@@ -83,6 +69,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             kotlinOptions.freeCompilerArgs = ['-Xno-param-assertions']
             defaultConfig.minSdkVersion rootProject.ext.minSdkVersion
+            signingConfig signingConfigs.release
         }
         signedRelease {
             initWith release

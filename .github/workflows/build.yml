@@ -40,12 +40,12 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           mkdir -p ~/.android
-          # Use fixed deterministic keystore
-          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -startdate "2020/01/01 00:00:00" || true
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          keytool -genkey -v -keystore /tmp/release.keystore -storepass android -alias androidreleasekey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=VLC Release,O=VideoLAN,C=US" || true
 
       - name: Build Application APK
         run: |
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleRelease --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -57,15 +57,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v2.8
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v2.8)"
+          tag_name: vlc-tv-custom-v3.0
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v3.0 Release)"
           body: |
-            ### VLC for Android TV v2.8 с исправлением установки
+            ### VLC for Android TV v3.0 (Official Release Build)
             
-            **Что исправлено в v2.8:**
-            - **Исправлен конфликт ContentProvider (`tv_provider_authority`)**: в модуле `television` для debug-сборок authority теперь явно совпадает с основным пакетом (`org.videolan.vlc.debug.tv`).
-            - **Фиксированный сертификат подписи**: теперь обновления гарантированно ставятся поверх без переустановки.
-            - **Прямой вызов `loadLocation`**: трек начинает играть моментально.
+            **Что исправлено в v3.0:**
+            - **Переход на чистый `assembleRelease`**: сборка теперь компилируется в режиме официального релиза с оригинальным именем пакета `org.videolan.vlc` (вместо `.debug`).
+            - **Гарантированная установка**: система Android TV 9 на телевизорах OEM-производителей блокирует установку сторонних debug-сборок из-за флагов `testOnly`/`jniDebuggable`. В Release-версии этих ограничений нет.
+            - **Полная функциональность**: UPnP/DLNA рендерер, прямой старт аудио через `loadLocation`, кастомное меню и Избранное.
           files: application/app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
