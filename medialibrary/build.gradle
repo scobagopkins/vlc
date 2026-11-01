@@ -95,7 +95,7 @@ clean {
 }
 
 dependencies {
-    releaseImplementation project(':libvlcjni:libvlc')
+    releaseImplementation "org.videolan.android:libvlc-all:$rootProject.ext.libvlcVersion"
     debugImplementation "org.videolan.android:libvlc-all:$rootProject.ext.libvlcVersion"
     devImplementation project(':libvlcjni:libvlc')
     api "androidx.legacy:legacy-support-v4:$rootProject.ext.androidxLegacyVersion"
