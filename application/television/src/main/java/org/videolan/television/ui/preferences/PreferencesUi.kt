@@ -30,6 +30,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Observer
 import androidx.preference.CheckBoxPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -51,16 +52,20 @@ import org.videolan.tools.SLEEP_TIMER_DEFAULT_RESET_INTERACTION
 import org.videolan.tools.SLEEP_TIMER_DEFAULT_WAIT
 import org.videolan.tools.Settings
 import org.videolan.tools.TV_FOLDERS_FIRST
+import org.videolan.tools.UPNP_RENDERER_ENABLED
 import org.videolan.tools.putSingle
 import org.videolan.vlc.BuildConfig
 import org.videolan.vlc.R
 import org.videolan.vlc.gui.dialogs.FeatureTouchOnlyWarningDialog
 import org.videolan.vlc.gui.dialogs.SleepTimerDialog
+import org.videolan.vlc.upnp.UpnpRendererController
+import org.videolan.vlc.upnp.UpnpRendererStatus
 
 @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
 class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPreferenceChangeListener {
 
     private lateinit var tvUiPref: CheckBoxPreference
+    private lateinit var rendererStatus: Preference
     private var currentLocale: String? = null
     private lateinit var settings: SharedPreferences
     private lateinit var sleepTimerPreference: PreferenceScreen
@@ -83,6 +88,10 @@ class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPrefer
         super.onCreatePreferences(bundle, s)
         settings = Settings.getInstance(activity)
         sleepTimerPreference = findPreference("default_sleep_timer")!!
+        findPreference<Preference>("upnp_renderer_status")?.let {
+            rendererStatus = it
+            rendererStatus.summary = getString(R.string.upnp_renderer_stopped)
+        }
         manageSleepTimerSummary()
     }
 
@@ -101,6 +110,17 @@ class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPrefer
     override fun onStart() {
         super.onStart()
         preferenceScreen.sharedPreferences!!.registerOnSharedPreferenceChangeListener(this)
+        val owner = activity as? FragmentActivity
+        if (owner != null) {
+            UpnpRendererController.status.observe(owner, Observer<UpnpRendererStatus> { updateRendererStatus(it) })
+            UpnpRendererController.status.value?.let { updateRendererStatus(it) }
+            Settings.upnpRendererEnabled.observe(owner, Observer<Boolean> { enabled ->
+                val ctx = context
+                if (ctx != null) {
+                    if (enabled) UpnpRendererController.ensureStarted(ctx) else UpnpRendererController.stop(ctx)
+                }
+            })
+        }
     }
 
     override fun onStop() {
@@ -121,6 +141,12 @@ class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPrefer
 
             TV_FOLDERS_FIRST -> Settings.tvFoldersFirst = sharedPreferences.getBoolean(TV_FOLDERS_FIRST, true)
             BROWSER_SHOW_HIDDEN_FILES -> Settings.showHiddenFiles = sharedPreferences.getBoolean(BROWSER_SHOW_HIDDEN_FILES, false)
+            UPNP_RENDERER_ENABLED -> {
+                val enabled = sharedPreferences.getBoolean(UPNP_RENDERER_ENABLED, true)
+                Settings.upnpRendererEnabled.postValue(enabled)
+                val ctx = context ?: return
+                if (enabled) UpnpRendererController.ensureStarted(ctx) else UpnpRendererController.stop(ctx)
+            }
         }
     }
 
@@ -157,6 +183,19 @@ class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPrefer
             "media_seen" -> (activity as PreferencesActivity).setRestart()
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    private fun updateRendererStatus(status: UpnpRendererStatus) {
+        if (!::rendererStatus.isInitialized) return
+        val ip = status.ip
+        val error = status.error
+        rendererStatus.summary = when {
+            status.running && !ip.isNullOrBlank() && status.httpPort > 0 ->
+                getString(R.string.upnp_renderer_running, "$ip:${status.httpPort}")
+            status.running -> getString(R.string.upnp_renderer_running, "0.0.0.0:${status.httpPort}")
+            !error.isNullOrBlank() -> getString(R.string.upnp_renderer_error, error)
+            else -> getString(R.string.upnp_renderer_stopped)
+        }
     }
 
     private fun manageSleepTimerSummary() {

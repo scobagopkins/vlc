@@ -35,6 +35,7 @@ object Settings : SingletonHolder<SharedPreferences, Context>({ init(it.applicat
     var incognitoMode = false
     var safeMode = false
     var remoteAccessEnabled = MutableLiveData(false)
+    var upnpRendererEnabled = MutableLiveData(false)
     var fastplaySpeed = 2f
     private var audioControlsChangeListener: (() -> Unit)? = null
     lateinit var device : DeviceInfo
@@ -62,6 +63,7 @@ object Settings : SingletonHolder<SharedPreferences, Context>({ init(it.applicat
         incognitoMode = prefs.getBoolean(KEY_INCOGNITO, false)
         safeMode = prefs.getBoolean(KEY_SAFE_MODE, false) && prefs.getString(KEY_SAFE_MODE_PIN, "")?.isNotBlank() == true
         remoteAccessEnabled.postValue(prefs.getBoolean(KEY_ENABLE_REMOTE_ACCESS, false))
+        upnpRendererEnabled.postValue(prefs.getBoolean(UPNP_RENDERER_ENABLED, true))
         fastplaySpeed = prefs.getString(FASTPLAY_SPEED, "2")?.toFloat() ?: 2f
         return prefs
     }
@@ -151,6 +153,12 @@ const val REMOTE_ACCESS_LOGS = "remote_access_logs"
 const val KEYSTORE_PASSWORD = "keystore_encrypted_password"
 const val KEYSTORE_PASSWORD_IV = "keystore_encrypted_password_iv"
 const val ENCRYPTED_KEY_NAME = "encryption_key"
+
+//UPnP / DLNA media renderer
+const val UPNP_RENDERER_ENABLED = "upnp_renderer_enabled"
+const val UPNP_RENDERER_NAME = "upnp_renderer_name"
+const val UPNP_RENDERER_AUTOSTART = "upnp_renderer_autostart"
+const val UPNP_RENDERER_UDN = "upnp_renderer_udn"
 
 
 //Tips

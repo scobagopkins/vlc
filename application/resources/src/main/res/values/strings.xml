@@ -1426,4 +1426,20 @@
     <string name="tv_show_history_summary">Show playback history row</string>
     <string name="tv_show_playlists_summary">Show saved playlists row</string>
     <string name="tv_show_favorites_summary">Show favorites row</string>
+
+    <!-- UPnP / DLNA MediaRenderer -->
+    <string name="upnp_renderer_category">UPnP / DLNA</string>
+    <string name="upnp_renderer_enable_title">Enable media renderer</string>
+    <string name="upnp_renderer_enable_summary">Let phones and computers play audio and video on this TV (DLNA/UPnP)</string>
+    <string name="upnp_renderer_name_title">Renderer name</string>
+    <string name="upnp_renderer_autostart_title">Start with the TV</string>
+    <string name="upnp_renderer_autostart_summary">Start the media renderer automatically after boot</string>
+    <string name="upnp_renderer_status_title">Renderer status</string>
+    <string name="upnp_renderer_running">Running on %1$s</string>
+    <string name="upnp_renderer_stopped">Stopped</string>
+    <string name="upnp_renderer_error">Error: %1$s</string>
+    <string name="upnp_renderer_notification_channel">DLNA media renderer</string>
+    <string name="upnp_renderer_notification_title">VLC UPnP renderer</string>
+    <string name="upnp_renderer_notification_text">Renderer at http://%1$s/description.xml</string>
+    <string name="upnp_renderer_notification_stop">Stop</string>
 </resources>

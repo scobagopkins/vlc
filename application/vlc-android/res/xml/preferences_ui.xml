@@ -203,4 +203,37 @@
                 android:summary="@string/tv_show_favorites_summary"
                 android:title="@string/favorites"/>
     </PreferenceCategory>
+
+    <PreferenceCategory
+            android:title="@string/upnp_renderer_category"
+            android:key="ui_upnp_renderer_category">
+
+        <CheckBoxPreference
+                app:singleLineTitle="false"
+                android:key="upnp_renderer_enabled"
+                android:defaultValue="true"
+                android:summary="@string/upnp_renderer_enable_summary"
+                android:title="@string/upnp_renderer_enable_title"/>
+
+        <EditTextPreference
+                app:singleLineTitle="false"
+                android:key="upnp_renderer_name"
+                android:defaultValue="VLC Android TV"
+                android:summary="%s"
+                android:dialogTitle="@string/upnp_renderer_name_title"
+                android:title="@string/upnp_renderer_name_title"/>
+
+        <CheckBoxPreference
+                app:singleLineTitle="false"
+                android:key="upnp_renderer_autostart"
+                android:defaultValue="true"
+                android:summary="@string/upnp_renderer_autostart_summary"
+                android:title="@string/upnp_renderer_autostart_title"/>
+
+        <Preference
+                android:key="upnp_renderer_status"
+                android:persistent="false"
+                android:title="@string/upnp_renderer_status_title"
+                android:summary="@string/upnp_renderer_stopped"/>
+    </PreferenceCategory>
 </androidx.preference.PreferenceScreen>

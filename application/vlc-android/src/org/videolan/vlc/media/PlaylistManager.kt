@@ -95,6 +95,7 @@ import org.videolan.vlc.util.setResumeProgram
 import org.videolan.vlc.util.updateNextProgramAfterThumbnailGeneration
 import org.videolan.vlc.util.updateWithMLMeta
 import org.videolan.vlc.util.validateLocation
+import org.videolan.vlc.upnp.UpnpVideoSession
 import java.security.SecureRandom
 import java.util.Calendar
 import java.util.Stack
@@ -486,7 +487,9 @@ class PlaylistManager(val service: PlaybackService) : MediaWrapperList.EventList
         val mw = medialibrary.getMedia(media.uri) ?: media
         mw.flags = media.flags
         val isInCustomPiP: Boolean = service.isInPiPMode.value ?: false
-        if (mw.type == MediaWrapper.TYPE_VIDEO && !isAppStarted() && !isInCustomPiP) videoBackground = true
+        // A UPnP/DLNA video cast must be shown on screen: the renderer raises UpnpVideoSession.active
+        // before load() so this background-audio demotion is skipped (P0-4). Default false => stock.
+        if (mw.type == MediaWrapper.TYPE_VIDEO && !isAppStarted() && !isInCustomPiP && !UpnpVideoSession.active) videoBackground = true
         val isVideoPlaying = mw.type == MediaWrapper.TYPE_VIDEO && player.isVideoPlaying()
         setRepeatTypeFromSettings()
         if (!videoBackground && isVideoPlaying) mw.addFlags(MediaWrapper.MEDIA_VIDEO)

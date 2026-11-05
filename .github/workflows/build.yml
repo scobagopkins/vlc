@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (also used for the GitHub release)'
+        required: false
+        default: 'vlc-tv-custom-v3.5'
 
 jobs:
   build:
@@ -50,19 +55,26 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VLC-Custom-TV-Debug
+          name: VLC-Custom-TV-v3.5
           path: application/app/build/outputs/apk/**/*.apk
 
       - name: Release APK
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: vlc-tv-custom-v3.4
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v3.4 Release)"
+          tag_name: ${{ github.event.inputs.release_tag || 'vlc-tv-custom-v3.5' }}
+          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v3.5)"
           body: |
-            ### VLC for Android TV v3.4 Release
-            
-            **Что исправлено в v3.4:**
+            ### VLC for Android TV v3.5 Release
+
+            **Новое в v3.5 — полностью переписанный UPnP/DLNA MediaRenderer:**
+            - **Foreground-сервис рендерера**: собственный жизненный цикл (START_STICKY), уведомление с адресом `http://IP:порт/description.xml`, запуск при загрузке TV (boot receiver + настройка автозапуска).
+            - **SSDP по каждому интерфейсу**: корректные LOCATION/USN/DATE/EXT/BOOTID, ssdp:alive раз в 10 минут, ssdp:byebye при выключении, перестройка сокетов при смене сети.
+            - **SOAP/GENA по спецификации**: полные SCPD с argumentList, коды ошибок UPnP (401/402/501/701/710/711/712/714/718), подписки и LastChange-события.
+            - **Видео-касты показываются на экране**: сессионный флаг UpnpVideoSession отключает фоновый аудио-режим PlaylistManager для DLNA-видео.
+            - **Надёжный мост воспроизведения**: запуск PlaybackService с таймаутом 10 с, повторный load после Stop, seek/volume/mute через AudioManager.
+
+            **Исправления из v3.4:**
             - **Исправлен UPnP DLNA Playback**: надёжный парсинг SOAP XML тегов CurrentURI (поддержка namespace-префиксов, CDATA и атрибутов).
             - **Корректный запуск PlaybackService**: запуск через AppScope(Dispatchers.Main), предотвращение гонки service.load + service.play и исключение повторного перезапуска плейлиста из AudioPlayerActivity.
             - **Флаг MEDIA_FORCE_AUDIO**: гарантированное воспроизведение сетевых HTTP аудиопотоков без расширений.

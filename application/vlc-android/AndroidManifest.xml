@@ -1067,6 +1067,21 @@
             </intent-filter>
         </service>
 
+        <!-- DLNA/UPnP MediaRenderer: foreground service with its own lifetime + boot auto-start.
+             Inert unless the upnp_renderer_enabled preference is on. -->
+        <service
+                android:name=".upnp.UpnpRendererService"
+                android:exported="false"
+                android:foregroundServiceType="mediaPlayback" />
+        <receiver
+                android:name=".upnp.UpnpRendererBootReceiver"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".car.VLCCarService"
             android:exported="true">

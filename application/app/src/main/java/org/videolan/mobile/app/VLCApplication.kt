@@ -26,8 +26,10 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.multidex.MultiDexApplication
 import org.videolan.libvlc.Dialog
+import org.videolan.resources.AndroidDevices
 import org.videolan.tools.BitmapCache
 import org.videolan.vlc.ArtworkProvider
+import org.videolan.vlc.upnp.UpnpRendererController
 import org.videolan.vlc.util.DialogDelegate
 
 private const val TAG = "VLC/VLCApplication"
@@ -42,6 +44,18 @@ class VLCApplication : MultiDexApplication(), Dialog.Callbacks by DialogDelegate
     override fun onCreate() {
         setupApplication()
         super.onCreate()
+        // DLNA renderer: install the preference listener on every device (so the toggle works
+        // even before the TV activity is opened) and auto-start it only on Android TV where the
+        // feature is expected to be always-on. The service itself is gated by the
+        // upnp_renderer_enabled preference, so this is a no-op when the renderer is disabled.
+        try {
+            UpnpRendererController.install(this)
+            if (AndroidDevices.isAndroidTv && UpnpRendererController.isEnabled(this)) {
+                UpnpRendererController.ensureStarted(this)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "UPnP renderer start failed: ${e.message}")
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
