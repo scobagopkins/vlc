@@ -418,6 +418,6 @@ class UpnpSoapHandler(
 
     private companion object {
         const val MAX_ARGS = 64
-        const val MAX_ARG_LENGTH = 32 * 1024
+        const val MAX_ARG_LENGTH = 256 * 1024
     }
 }

@@ -89,6 +89,9 @@ object UpnpPlaybackBridge {
     @Volatile
     private var currentMetadata: String? = null
 
+    @Volatile
+    private var pendingSeekMs: Long = -1L
+
     // ---------------------------------------------------------------- lifecycle
 
     /** Attaches the bridge to the application context and starts the main-thread actor. */
@@ -132,6 +135,7 @@ object UpnpPlaybackBridge {
         val item = UpnpDidlLite.parse(metadata, uri) ?: UpnpMediaItem(uri)
         currentItem = item.copy(uri = uri)
         currentMetadata = metadata
+        pendingSeekMs = -1L
         // Publish the new URI synchronously: the next SOAP request (SetAVTransportURI is almost
         // always followed by GetTransportInfo/GetMediaInfo or Play on another connection) must not
         // observe the previous item while the actor is still queued.
@@ -256,7 +260,8 @@ object UpnpPlaybackBridge {
 
         val sameMedia = service.playlistManager.hasCurrentMedia() &&
                 service.currentMediaWrapper?.uri?.toString() == item.uri
-        val alreadyActive = service.isPlaying || service.isPaused
+        val alreadyActive = (service.isPlaying || service.isPaused) &&
+                UpnpPlaybackSnapshot.transportState != UpnpPlaybackSnapshot.STATE_STOPPED
         if (sameMedia && alreadyActive) {
             // Resume after Pause: do not reload, or playback would restart at 0.
             if (service.isPaused) service.play()
@@ -270,11 +275,26 @@ object UpnpPlaybackBridge {
         if (started) {
             UpnpVideoSession.active = isVideo
             UpnpPlaybackSnapshot.transportStatus = "OK"
+            val seekTo = pendingSeekMs
+            if (seekTo > 0L) {
+                pendingSeekMs = -1L
+                try {
+                    service.seek(seekTo, fromUser = false)
+                    UpnpPlaybackSnapshot.positionMs = seekTo
+                } catch (e: Exception) {
+                    Log.w(TAG, "Deferred seek failed: ${e.message}")
+                }
+            }
+            if (!isVideo && service.playlistManager.player.canSwitchToVideo()) {
+                UpnpVideoSession.active = true
+                UpnpPlaybackSnapshot.isVideo = true
+                service.playlistManager.switchToVideo()
+            }
         } else {
             UpnpVideoSession.active = false
         }
         UpnpPlaybackSnapshot.refreshNow()
-        presentAudioUiIfNeeded(isVideo)
+        presentAudioUiIfNeeded(UpnpPlaybackSnapshot.isVideo)
     }
 
     private fun handlePause() {
@@ -292,6 +312,7 @@ object UpnpPlaybackBridge {
     private fun handleStop() {
         UpnpVideoSession.active = false
         UpnpPlaybackSnapshot.pendingPlay = false
+        pendingSeekMs = -1L
         try {
             PlaybackService.instance?.stop()
         } catch (e: Exception) {
@@ -307,10 +328,15 @@ object UpnpPlaybackBridge {
     }
 
     private fun handleSeek(positionMs: Long) {
-        val service = PlaybackService.instance ?: return
+        val duration = UpnpPlaybackSnapshot.durationMs
+        val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
+        val service = PlaybackService.instance
+        if (service == null || (!service.isPlaying && !service.isPaused) || UpnpPlaybackSnapshot.pendingPlay) {
+            pendingSeekMs = target
+            UpnpPlaybackSnapshot.positionMs = target
+            return
+        }
         try {
-            val duration = UpnpPlaybackSnapshot.durationMs
-            val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
             service.seek(target, fromUser = false)
             UpnpPlaybackSnapshot.positionMs = target
             UpnpPlaybackSnapshot.refreshNow()
@@ -424,7 +450,6 @@ object UpnpPlaybackBridge {
             if (item.durationMs > 0L) wrapper.setLength(item.durationMs)
             item.artist?.takeIf { it.isNotBlank() }?.let { wrapper.setArtist(it) }
             item.artworkUrl?.takeIf { it.isNotBlank() }?.let { wrapper.setArtworkURL(it) }
-            if (!isVideo) wrapper.addFlags(MediaWrapper.MEDIA_FORCE_AUDIO)
         } catch (e: Exception) {
             Log.w(TAG, "wrapper metadata assignment failed: ${e.message}")
         }
@@ -436,13 +461,11 @@ object UpnpPlaybackBridge {
      *
      * Video is presented by `PlaylistManager.playIndex()` itself (which starts
      * `VideoPlayerActivity`) because [UpnpVideoSession.active] suppresses the background-audio
-     * demotion. For audio we may open the TV audio player, but only on API < 29 (background
-     * activity starts are restricted later) and only on Android TV; failures are non-fatal.
+     * demotion. For audio we open the TV audio player; failures are non-fatal.
      */
     private fun presentAudioUiIfNeeded(isVideo: Boolean) {
         if (isVideo) return
-        if (!AndroidDevices.isAndroidTv) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return
+        if (!AndroidDevices.isAndroidTv && !AndroidDevices.isTv) return
         val ctx = appContext ?: return
         try {
             val intent = Intent().setClassName(ctx, TV_AUDIO_ACTIVITY)

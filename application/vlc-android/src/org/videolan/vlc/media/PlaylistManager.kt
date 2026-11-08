@@ -489,7 +489,11 @@ class PlaylistManager(val service: PlaybackService) : MediaWrapperList.EventList
         val isInCustomPiP: Boolean = service.isInPiPMode.value ?: false
         // A UPnP/DLNA video cast must be shown on screen: the renderer raises UpnpVideoSession.active
         // before load() so this background-audio demotion is skipped (P0-4). Default false => stock.
-        if (mw.type == MediaWrapper.TYPE_VIDEO && !isAppStarted() && !isInCustomPiP && !UpnpVideoSession.active) videoBackground = true
+        if (UpnpVideoSession.active && mw.type == MediaWrapper.TYPE_VIDEO) {
+            videoBackground = false
+        } else if (mw.type == MediaWrapper.TYPE_VIDEO && !isAppStarted() && !isInCustomPiP) {
+            videoBackground = true
+        }
         val isVideoPlaying = mw.type == MediaWrapper.TYPE_VIDEO && player.isVideoPlaying()
         setRepeatTypeFromSettings()
         if (!videoBackground && isVideoPlaying) mw.addFlags(MediaWrapper.MEDIA_VIDEO)

@@ -27,15 +27,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <permission
-        android:name="org.videolan.vlc.permission.READ_EXTENSION_DATA"
+        android:name="${applicationId}.permission.READ_EXTENSION_DATA"
         android:protectionLevel="normal" />
 
     <permission
-        android:name="org.videolan.vlc.permission.BIND_DATA_CONSUMER"
+        android:name="${applicationId}.permission.BIND_DATA_CONSUMER"
         android:protectionLevel="normal" />
 
-    <uses-permission android:name="org.videolan.vlc.permission.READ_EXTENSION_DATA" />
-    <uses-permission android:name="org.videolan.vlc.permission.BIND_DATA_CONSUMER" />
+    <uses-permission android:name="${applicationId}.permission.READ_EXTENSION_DATA" />
+    <uses-permission android:name="${applicationId}.permission.BIND_DATA_CONSUMER" />
 
     <application/>
 

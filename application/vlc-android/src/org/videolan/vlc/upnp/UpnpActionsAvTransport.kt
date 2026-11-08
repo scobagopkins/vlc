@@ -134,7 +134,7 @@ object UpnpActionsAvTransport {
         val targetRaw = args.requireNonEmpty("Target")
         if (currentUri().isEmpty()) throw UpnpException(UpnpError.TransitionNotAvailable)
         val state = currentState()
-        if (state == "STOPPED" || state == "NO_MEDIA_PRESENT") {
+        if (state == "NO_MEDIA_PRESENT") {
             throw UpnpException(UpnpError.TransitionNotAvailable)
         }
 

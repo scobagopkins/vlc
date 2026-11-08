@@ -153,25 +153,10 @@ object UpnpRendererController {
 
     /** Persisted device identity: `uuid:<UUID>`, generated once and never hard-coded. */
     @Synchronized
-    fun udn(context: Context): String {
-        val sharedPreferences = sharedPrefs(context)
-        var udn = sharedPreferences.getString(UPNP_RENDERER_UDN, null)
-        if (udn.isNullOrBlank() || !udn.startsWith("uuid:", ignoreCase = true)) {
-            udn = "uuid:" + UUID.randomUUID().toString().lowercase(Locale.US)
-            sharedPreferences.edit().putString(UPNP_RENDERER_UDN, udn).apply()
-        }
-        return udn
-    }
+    fun udn(context: Context): String = UpnpConstants.udn(context)
 
     /** Sanitized friendly name from `upnp_renderer_name` (default [DEFAULT_FRIENDLY_NAME]). */
-    fun friendlyName(context: Context): String {
-        val raw = sharedPrefs(context).getString(UPNP_RENDERER_NAME, null)
-        val candidate = raw?.trim()?.takeIf { it.isNotEmpty() } ?: DEFAULT_FRIENDLY_NAME
-        val sanitized = candidate.filter { it.code in 32..0x10FFFF && it != '\n' && it != '\r' }
-                .trim()
-                .take(MAX_FRIENDLY_NAME_LENGTH)
-        return sanitized.ifEmpty { DEFAULT_FRIENDLY_NAME }
-    }
+    fun friendlyName(context: Context): String = UpnpConstants.friendlyName(context)
 
     // ---------------------------------------------------------------- service -> controller
 

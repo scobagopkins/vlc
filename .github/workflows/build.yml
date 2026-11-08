@@ -1,85 +1,127 @@
-name: Build VLC Android TV
+name: Build VLC Android TV APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, v3.5 ]
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release tag (also used for the GitHub release)'
+        description: 'Release tag name (e.g. vlc-tv-custom-v3.6)'
         required: false
-        default: 'vlc-tv-custom-v3.5'
+        default: 'vlc-tv-custom-v3.6'
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build Custom VLC TV APK
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    name: Build APK (ARMv7 + ARM64 + Universal)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
 
-      - name: Accept Android SDK Licenses
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK components
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "platforms;android-34" "build-tools;35.0.0" "build-tools;34.0.0"
 
-      - name: Download Gradle & Generate Wrapper
+      - name: Prepare persistent release keystore
         run: |
-          GRADLE_VERSION=8.13
-          curl -sLO https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
-          python3 -c "import zipfile; zipfile.ZipFile('gradle-${GRADLE_VERSION}-bin.zip').extractall('.')"
-          chmod +x ./gradle-${GRADLE_VERSION}/bin/gradle
-          ./gradle-${GRADLE_VERSION}/bin/gradle wrapper
-          chmod +x gradlew
-          rm -rf gradle-${GRADLE_VERSION}-bin.zip
+          mkdir -p keystore
+          if [ ! -f keystore/release.keystore ]; then
+            keytool -genkeypair \
+              -v \
+              -keystore keystore/release.keystore \
+              -alias vlc-custom \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -startdate "2018/01/01 00:00:00" \
+              -storepass android \
+              -keypass android \
+              -dname "CN=VLC Custom TV, OU=Custom, O=VideoLAN-Fork, L=Moscow, S=Moscow, C=RU"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add keystore/release.keystore
+            git commit -m "chore(ci): persist release keystore across builds [skip ci]" || true
+            git push origin HEAD:${GITHUB_REF_NAME} || true
+          fi
+          cp keystore/release.keystore /tmp/release.keystore
+          ls -la /tmp/release.keystore
 
-      - name: Setup local.properties and debug keystore
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Signed Release APKs
+        env:
+          GRADLE_OPTS: "-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dkotlin.daemon.jvm.options=-Xmx2g"
         run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          mkdir -p ~/.android
-          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
-          keytool -genkey -v -keystore /tmp/release.keystore -storepass android -alias androidreleasekey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=VLC Release,O=VideoLAN,C=US" || true
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -PforceVlc4=false
 
-      - name: Build Application APK
+      - name: Collect built APKs
         run: |
-          ./gradlew assembleRelease --stacktrace
+          mkdir -p dist
+          find application/app/build/outputs/apk -name "*.apk" -exec cp -v {} dist/ \;
+          ls -lh dist/
 
-      - name: Upload APK Artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VLC-Custom-TV-v3.5
-          path: application/app/build/outputs/apk/**/*.apk
+          name: vlc-android-tv-custom-apks
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 90
 
-      - name: Release APK
+      - name: Create / Update GitHub Release
+        if: success()
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/heads/')
         with:
-          tag_name: ${{ github.event.inputs.release_tag || 'vlc-tv-custom-v3.5' }}
-          name: "VLC for Android TV (UPnP MediaRenderer + Home Sections v3.5)"
+          tag_name: ${{ github.event.inputs.release_tag || 'vlc-tv-custom-v3.6' }}
+          name: "VLC Android TV Custom v3.6 (Hyundai 24 5002 Fix + DLNA Renderer + Full TV Menu Reorder)"
           body: |
-            ### VLC for Android TV v3.5 Release
+            ## VLC Android TV Custom Build v3.6 (Исправленная сборка для Hyundai 24 5002)
 
-            **Новое в v3.5 — полностью переписанный UPnP/DLNA MediaRenderer:**
-            - **Foreground-сервис рендерера**: собственный жизненный цикл (START_STICKY), уведомление с адресом `http://IP:порт/description.xml`, запуск при загрузке TV (boot receiver + настройка автозапуска).
-            - **SSDP по каждому интерфейсу**: корректные LOCATION/USN/DATE/EXT/BOOTID, ssdp:alive раз в 10 минут, ssdp:byebye при выключении, перестройка сокетов при смене сети.
-            - **SOAP/GENA по спецификации**: полные SCPD с argumentList, коды ошибок UPnP (401/402/501/701/710/711/712/714/718), подписки и LastChange-события.
-            - **Видео-касты показываются на экране**: сессионный флаг UpnpVideoSession отключает фоновый аудио-режим PlaylistManager для DLNA-видео.
-            - **Надёжный мост воспроизведения**: запуск PlaybackService с таймаутом 10 с, повторный load после Stop, seek/volume/mute через AudioManager.
+            ### Что исправлено для установки на Android TV (Hyundai 24 5002):
+            1. **Устранён конфликт пакета и сертификатов (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`)**:
+               - Отдельный `applicationId`: `org.videolan.vlc.upnp` (можно устанавливать рядом со штатным/официальным VLC или старыми отладочными сборками без конфликтов).
+               - Фиксированный ключ подписи (`keystore/release.keystore`) с датой начала действия `2018-01-01` (защита от сбоя проверки сертификата при сбитых часах ТВ после включения) и поддержкой схем подписи `v1 (JAR)` + `v2 (APK Signature Scheme v2)`.
+            2. **Устранён конфликт прав доступа и ContentProvider (`INSTALL_FAILED_DUPLICATE_PERMISSION` / `INSTALL_FAILED_CONFLICTING_PROVIDER`)**:
+               - Права `READ_EXTENSION_DATA` и `BIND_DATA_CONSUMER` в `AndroidManifest.xml` привязаны к `${applicationId}` вместо жёстко заданного `org.videolan.vlc`.
+            3. **Оптимизированы архитектуры (ABI)**:
+               - Из универсального APK удалены ненужные на ТВ библиотеки `x86` / `x86_64` (размер уменьшен почти вдвое).
 
-            **Исправления из v3.4:**
-            - **Исправлен UPnP DLNA Playback**: надёжный парсинг SOAP XML тегов CurrentURI (поддержка namespace-префиксов, CDATA и атрибутов).
-            - **Корректный запуск PlaybackService**: запуск через AppScope(Dispatchers.Main), предотвращение гонки service.load + service.play и исключение повторного перезапуска плейлиста из AudioPlayerActivity.
-            - **Флаг MEDIA_FORCE_AUDIO**: гарантированное воспроизведение сетевых HTTP аудиопотоков без расширений.
-            - **Полноценный парсинг HTTP запросов по байтам**: защита от зависаний при несовпадении Content-Length и многобайтовых UTF-8 символов.
-            - **Управление громкостью через AudioManager**: поддержка команд GetVolume, SetVolume, GetMute, SetMute в RenderingControl.
-          files: application/app/build/outputs/apk/**/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            ### Что исправлено в UPnP / DLNA MediaRenderer и главном меню ТВ:
+            - **Переорганизация главного меню Android TV**:
+              - Добавлен интерактивный редактор **«Настроить порядок разделов вручную…»** (*Настройки -> Интерфейс -> Настроить порядок разделов вручную…*), позволяющий пультом ТВ перемещать любые из 9 разделов вверх/вниз/в начало/в конец.
+              - Добавлен режим «Сначала Избранное» и исправлен дублирующийся ID заголовка строки «Избранное» (`HEADER_FAVORITES`), из-за которого ломалась навигация Leanback.
+            - **UPnP / DLNA MediaRenderer (`VLC TV`)**:
+              - Убрана блокировка запуска UPnP-рендерера на прошивках ТВ, где не выставлен системный флаг `android.software.leanback`.
+              - Исправлен баг в `PlaylistManager`, из-за которого видео по UPnP могло открываться только со звуком (без видеоплеера) после фонового воспроизведения.
+              - Добавлена поддержка отложенной перемотки (`Seek` в состояниях `STOPPED` и `TRANSITIONING`) и автопереключения на видеоплеер для потоков без расширения в URL.
+
+            ### Какой APK скачивать для Hyundai 24 5002:
+            - **`VLC-Android-3.6.5-upnp-armeabi-v7a.apk`** — **рекомендуется для Hyundai 24 5002** (32-bit ARMv7, минимальный размер ~31 МБ).
+            - **`VLC-Android-3.6.5-upnp-all.apk`** — универсальный APK (ARMv7 + ARM64).
+            - **`VLC-Android-3.6.5-upnp-arm64-v8a.apk`** — только для 64-битных ТВ/приставок.
+          files: dist/*.apk
+          draft: false
+          prerelease: false
+          make_latest: true

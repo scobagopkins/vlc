@@ -57,6 +57,7 @@ import org.videolan.resources.CATEGORY_NOW_PLAYING_PAUSED
 import org.videolan.resources.CATEGORY_NOW_PLAYING_PIP
 import org.videolan.resources.CATEGORY_NOW_PLAYING_PIP_PAUSED
 import org.videolan.resources.HEADER_CATEGORIES
+import org.videolan.resources.HEADER_FAVORITES
 import org.videolan.resources.HEADER_HISTORY
 import org.videolan.resources.HEADER_MISC
 import org.videolan.resources.HEADER_NETWORK
@@ -208,7 +209,7 @@ class MainTvFragment : BrowseSupportFragment(), OnItemViewSelectedListener, OnIt
 //        rowsAdapter.add(playlistRow)
 
         favoritesAdapter = ArrayObjectAdapter(CardPresenter(ctx))
-        val favoritesHeader = HeaderItem(HEADER_PLAYLISTS, getString(R.string.favorites))
+        val favoritesHeader = HeaderItem(HEADER_FAVORITES, getString(R.string.favorites))
         favoritesRow = ListRow(favoritesHeader, favoritesAdapter)
 
         //Browser section
@@ -354,11 +355,38 @@ class MainTvFragment : BrowseSupportFragment(), OnItemViewSelectedListener, OnIt
         val showFavoritesPref = sharedPrefs.getBoolean("tv_show_favorites", true)
         val order = sharedPrefs.getString("tv_sections_order", "default")
 
+        val sectionMap = mapOf(
+            "browse" to browsersRow,
+            "favorites" to favoritesRow,
+            "video" to videoRow,
+            "audio" to audioRow,
+            "now_playing" to nowPlayingRow,
+            "recently_played" to recentlyPlayedRow,
+            "recently_added" to recentlyAdddedRow,
+            "playlists" to playlistRow,
+            "history" to historyRow
+        )
+
         val rawList = when (order) {
-            "browse_first" -> listOf(browsersRow, audioRow, videoRow, nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, playlistRow, historyRow, favoritesRow, miscRow)
-            "audio_first" -> listOf(audioRow, browsersRow, videoRow, nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, playlistRow, historyRow, favoritesRow, miscRow)
-            "video_first" -> listOf(videoRow, browsersRow, audioRow, nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, playlistRow, historyRow, favoritesRow, miscRow)
-            else -> listOf(nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, videoRow, audioRow, playlistRow, historyRow, favoritesRow, browsersRow, miscRow)
+            "browse_first" -> listOf(browsersRow, favoritesRow, videoRow, audioRow, nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, playlistRow, historyRow, miscRow)
+            "favorites_first" -> listOf(favoritesRow, browsersRow, videoRow, audioRow, nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, playlistRow, historyRow, miscRow)
+            "audio_first" -> listOf(audioRow, browsersRow, favoritesRow, videoRow, nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, playlistRow, historyRow, miscRow)
+            "video_first" -> listOf(videoRow, browsersRow, favoritesRow, audioRow, nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, playlistRow, historyRow, miscRow)
+            "custom" -> {
+                val customOrderStr = sharedPrefs.getString("tv_sections_custom_order", null)
+                val keys = customOrderStr?.split(",")?.map { it.trim() }?.filter { sectionMap.containsKey(it) }.orEmpty()
+                val ordered = ArrayList<ListRow>()
+                for (k in keys) {
+                    val row = sectionMap[k]
+                    if (row != null && !ordered.contains(row)) ordered.add(row)
+                }
+                for (row in sectionMap.values) {
+                    if (!ordered.contains(row)) ordered.add(row)
+                }
+                ordered.add(miscRow)
+                ordered
+            }
+            else -> listOf(nowPlayingRow, recentlyPlayedRow, recentlyAdddedRow, videoRow, audioRow, favoritesRow, browsersRow, playlistRow, historyRow, miscRow)
         }
 
         val adapters = rawList.filter {
@@ -383,7 +411,10 @@ class MainTvFragment : BrowseSupportFragment(), OnItemViewSelectedListener, OnIt
                     return@forEach
                 }
             }
-        if (needToRefresh) rowsAdapter.setItems(adapters, TvUtil.listDiffCallback)
+        if (needToRefresh) {
+            rowsAdapter.clear()
+            rowsAdapter.addAll(0, adapters)
+        }
     }
 
     override fun onStart() {

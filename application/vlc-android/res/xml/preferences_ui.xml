@@ -148,6 +148,11 @@
                 android:summary="%s"
                 android:entries="@array/tv_sections_order_entries"
                 android:entryValues="@array/tv_sections_order_values"/>
+        <Preference
+                android:key="tv_sections_reorder_custom"
+                android:persistent="false"
+                android:title="@string/tv_sections_reorder_custom_title"
+                android:summary="@string/tv_sections_reorder_custom_summary"/>
         <CheckBoxPreference
                 app:singleLineTitle="false"
                 android:key="tv_show_browse"

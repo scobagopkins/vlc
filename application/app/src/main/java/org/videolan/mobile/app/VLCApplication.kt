@@ -50,7 +50,7 @@ class VLCApplication : MultiDexApplication(), Dialog.Callbacks by DialogDelegate
         // upnp_renderer_enabled preference, so this is a no-op when the renderer is disabled.
         try {
             UpnpRendererController.install(this)
-            if (AndroidDevices.isAndroidTv && UpnpRendererController.isEnabled(this)) {
+            if (UpnpRendererController.isEnabled(this)) {
                 UpnpRendererController.ensureStarted(this)
             }
         } catch (e: Exception) {

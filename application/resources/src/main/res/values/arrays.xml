@@ -734,13 +734,17 @@
     <string-array name="tv_sections_order_entries">
         <item>@string/tv_sections_order_default</item>
         <item>@string/tv_sections_order_browse_first</item>
+        <item>@string/tv_sections_order_favorites_first</item>
         <item>@string/tv_sections_order_audio_first</item>
         <item>@string/tv_sections_order_video_first</item>
+        <item>@string/tv_sections_order_custom</item>
     </string-array>
     <string-array name="tv_sections_order_values">
         <item>default</item>
         <item>browse_first</item>
+        <item>favorites_first</item>
         <item>audio_first</item>
         <item>video_first</item>
+        <item>custom</item>
     </string-array>
 </resources>

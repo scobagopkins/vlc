@@ -24,6 +24,7 @@
 package org.videolan.television.ui.preferences
 
 import android.annotation.TargetApi
+import android.app.AlertDialog
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.SharedPreferences
@@ -66,9 +67,24 @@ class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPrefer
 
     private lateinit var tvUiPref: CheckBoxPreference
     private lateinit var rendererStatus: Preference
+    private var reorderCustomPref: Preference? = null
     private var currentLocale: String? = null
     private lateinit var settings: SharedPreferences
     private lateinit var sleepTimerPreference: PreferenceScreen
+
+    private data class TvSectionItem(val key: String, val titleRes: Int)
+
+    private val defaultTvSections = listOf(
+        TvSectionItem("browse", R.string.browsing),
+        TvSectionItem("favorites", R.string.favorites),
+        TvSectionItem("video", R.string.video),
+        TvSectionItem("audio", R.string.audio),
+        TvSectionItem("now_playing", R.string.music_now_playing),
+        TvSectionItem("recently_played", R.string.recently_played),
+        TvSectionItem("recently_added", R.string.recently_added),
+        TvSectionItem("playlists", R.string.playlists),
+        TvSectionItem("history", R.string.history)
+    )
     override fun getXml() = R.xml.preferences_ui
 
     override fun getTitleId() = R.string.interface_prefs_screen
@@ -92,6 +108,8 @@ class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPrefer
             rendererStatus = it
             rendererStatus.summary = getString(R.string.upnp_renderer_stopped)
         }
+        reorderCustomPref = findPreference("tv_sections_reorder_custom")
+        updateCustomOrderSummary()
         manageSleepTimerSummary()
     }
 
@@ -180,9 +198,101 @@ class PreferencesUi : BasePreferenceFragment(), SharedPreferences.OnSharedPrefer
                 (activity as PreferencesActivity).setRestart()
                 return true
             }
+            "tv_sections_reorder_custom" -> {
+                showSectionsReorderDialog()
+                return true
+            }
             "media_seen" -> (activity as PreferencesActivity).setRestart()
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    private fun getCurrentCustomSections(): MutableList<TvSectionItem> {
+        val raw = settings.getString("tv_sections_custom_order", null)
+        val byKey = defaultTvSections.associateBy { it.key }
+        val result = ArrayList<TvSectionItem>()
+        if (!raw.isNullOrBlank()) {
+            for (part in raw.split(",")) {
+                val item = byKey[part.trim()]
+                if (item != null && !result.contains(item)) result.add(item)
+            }
+        }
+        for (item in defaultTvSections) {
+            if (!result.contains(item)) result.add(item)
+        }
+        return result
+    }
+
+    private fun saveCustomSections(sections: List<TvSectionItem>) {
+        val orderStr = sections.joinToString(",") { it.key }
+        settings.edit()
+            .putString("tv_sections_custom_order", orderStr)
+            .putString("tv_sections_order", "custom")
+            .apply()
+        findPreference<ListPreference>("tv_sections_order")?.value = "custom"
+        updateCustomOrderSummary()
+    }
+
+    private fun updateCustomOrderSummary() {
+        val pref = reorderCustomPref ?: return
+        val sections = getCurrentCustomSections()
+        pref.summary = sections.mapIndexed { idx, item -> "${idx + 1}. ${getString(item.titleRes)}" }.joinToString(" → ")
+    }
+
+    private fun showSectionsReorderDialog() {
+        val act = activity ?: return
+        val sections = getCurrentCustomSections()
+        val labels = sections.mapIndexed { idx, item -> "${idx + 1}. ${getString(item.titleRes)}" }.toTypedArray()
+        AlertDialog.Builder(act)
+            .setTitle(R.string.tv_sections_reorder_custom_title)
+            .setItems(labels) { _, which ->
+                showMoveSectionDialog(sections, which)
+            }
+            .setNeutralButton(R.string.tv_sections_reset_default) { _, _ ->
+                saveCustomSections(defaultTvSections)
+            }
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showMoveSectionDialog(sections: MutableList<TvSectionItem>, index: Int) {
+        val act = activity ?: return
+        if (index !in sections.indices) return
+        val item = sections[index]
+        val options = arrayOf(
+            getString(R.string.tv_section_move_up),
+            getString(R.string.tv_section_move_down),
+            getString(R.string.tv_section_move_top),
+            getString(R.string.tv_section_move_bottom)
+        )
+        AlertDialog.Builder(act)
+            .setTitle("${index + 1}. ${getString(item.titleRes)}")
+            .setItems(options) { _, action ->
+                when (action) {
+                    0 -> if (index > 0) {
+                        sections.removeAt(index)
+                        sections.add(index - 1, item)
+                    }
+                    1 -> if (index < sections.lastIndex) {
+                        sections.removeAt(index)
+                        sections.add(index + 1, item)
+                    }
+                    2 -> if (index > 0) {
+                        sections.removeAt(index)
+                        sections.add(0, item)
+                    }
+                    3 -> if (index < sections.lastIndex) {
+                        sections.removeAt(index)
+                        sections.add(item)
+                    }
+                }
+                saveCustomSections(sections)
+                showSectionsReorderDialog()
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                showSectionsReorderDialog()
+            }
+            .show()
     }
 
     private fun updateRendererStatus(status: UpnpRendererStatus) {

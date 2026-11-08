@@ -45,8 +45,8 @@ object UpnpConstants {
     val HTTP_PORTS = 8188..8199               // never 8088, never 8080/8081
     val FORBIDDEN_PORTS = setOf(80, 443, 1900, 5000, 8080, 8081, 8088, 8090, 8200, 9000)
     const val HTTP_ACCEPT_BACKLOG = 32
-    const val HTTP_HEADER_MAX_BYTES = 8 * 1024      // hard cap on the request head
-    const val HTTP_BODY_MAX_BYTES = 64 * 1024       // hard cap on SOAP bodies
+    const val HTTP_HEADER_MAX_BYTES = 16 * 1024     // hard cap on the request head
+    const val HTTP_BODY_MAX_BYTES = 512 * 1024      // hard cap on SOAP bodies
     const val HTTP_SOCKET_TIMEOUT_MS = 15_000
     const val HTTP_MAX_CONNECTIONS = 16
     const val HTTP_EPHEMERAL_FALLBACK = true
