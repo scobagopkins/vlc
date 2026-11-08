@@ -16,7 +16,7 @@ permissions:
 jobs:
   build:
     name: Build APK (ARMv7 + ARM64 + Universal)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
@@ -30,27 +30,33 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Install required Android SDK components
+      - name: Accept Android SDK Licenses
         run: |
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          export ANDROID_HOME="$ANDROID_SDK_ROOT"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          SDKMANAGER=$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n 1)
-          echo "Using sdkmanager: $SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "platforms;android-34" "build-tools;35.0.0" "build-tools;34.0.0"
+          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n 1)
+          yes | "$SDKMANAGER" --licenses 2>/dev/null || true
 
-      - name: Prepare persistent release keystore
+      - name: Download Gradle & Generate Wrapper
         run: |
-          mkdir -p keystore
-          if [ ! -f keystore/release.keystore ]; then
+          GRADLE_VERSION=8.13
+          curl -sLO https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip
+          python3 -c "import zipfile; zipfile.ZipFile('gradle-${GRADLE_VERSION}-bin.zip').extractall('.')"
+          chmod +x ./gradle-${GRADLE_VERSION}/bin/gradle
+          ./gradle-${GRADLE_VERSION}/bin/gradle wrapper
+          chmod +x gradlew
+          rm -rf gradle-${GRADLE_VERSION}-bin.zip
+
+      - name: Prepare persistent release keystore & local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          mkdir -p ~/.android keystore
+          keytool -genkeypair -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -startdate "2018/01/01 00:00:00" -dname "CN=Android Debug,O=Android,C=US" || true
+          if ! keytool -list -keystore keystore/release.keystore -storepass android -alias androidreleasekey >/dev/null 2>&1; then
+            rm -f keystore/release.keystore
             keytool -genkeypair \
               -v \
               -keystore keystore/release.keystore \
-              -alias vlc-custom \
+              -alias androidreleasekey \
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
@@ -67,17 +73,9 @@ jobs:
           cp keystore/release.keystore /tmp/release.keystore
           ls -la /tmp/release.keystore
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
       - name: Build Signed Release APKs
-        env:
-          GRADLE_OPTS: "-Xmx5g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dkotlin.daemon.jvm.options=-Xmx2g"
         run: |
-          ./gradlew assembleRelease \
-            --no-daemon \
-            --stacktrace \
-            -PforceVlc4=false
+          ./gradlew assembleRelease --stacktrace
 
       - name: Collect built APKs
         run: |
@@ -88,7 +86,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vlc-android-tv-custom-apks
+          name: VLC-Custom-TV-v3.6
           path: dist/*.apk
           if-no-files-found: error
           retention-days: 90
@@ -128,3 +126,5 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
