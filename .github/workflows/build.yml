@@ -60,7 +60,7 @@ jobs:
               -dname "CN=VLC Custom TV, OU=Custom, O=VideoLAN-Fork, L=Moscow, S=Moscow, C=RU"
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add keystore/release.keystore
+            git add -f keystore/release.keystore || true
             git commit -m "chore(ci): persist release keystore across builds [skip ci]" || true
             git push origin HEAD:${GITHUB_REF_NAME} || true
           fi
